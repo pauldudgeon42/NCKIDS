@@ -91,19 +91,62 @@
     return out.length ? out : sections.map((s) => s.key);
   }
 
+  // ---------- fitting lyrics on screen ----------
+  // The lyrics area on the TV is 88% of a 1920px-wide stage (see renderer.js).
+  const TEXT_WIDTH = 1920 * 0.88 * 0.97; // small safety margin for font differences
+  let measureCtx = null;
+  function setFont(settings) {
+    if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
+    // Text may shrink up to 20% to keep a line whole before it counts as two lines.
+    const size = (Number(settings.maxFontSize) || 110) * 0.8;
+    measureCtx.font = `700 ${size}px "${settings.font || 'Avenir Next'}", "Avenir Next", "Helvetica Neue", Arial, sans-serif`;
+  }
+  function textWidth(t, settings) {
+    return measureCtx.measureText(settings.uppercase ? t.toUpperCase() : t).width;
+  }
+  /** Break one lyric line into the lines it would take up on the TV at full text size. */
+  function wrapLine(line, settings) {
+    if (typeof document === 'undefined' || textWidth(line, settings) <= TEXT_WIDTH) return [line];
+    const words = line.split(/\s+/);
+    const out = [];
+    let cur = '';
+    for (const w of words) {
+      const next = cur ? cur + ' ' + w : w;
+      if (!cur || textWidth(next, settings) <= TEXT_WIDTH) cur = next;
+      else { out.push(cur); cur = w; }
+    }
+    if (cur) out.push(cur);
+    return out;
+  }
+  /**
+   * Split a group of lines into slides of at most `max` on-screen lines.
+   * Lines are shared out evenly, so 5 lines become 3 + 2 rather than 4 + 1.
+   */
+  function splitEvenly(lines, max) {
+    if (lines.length <= max) return [lines];
+    const count = Math.ceil(lines.length / max);
+    const per = Math.ceil(lines.length / count);
+    const out = [];
+    for (let i = 0; i < lines.length; i += per) out.push(lines.slice(i, i + per));
+    return out;
+  }
+
   /** Build the slides for a song. */
   function buildSlides(song, settings) {
     const perSlide = Math.max(1, Number(settings.linesPerSlide) || 4);
     const sections = parseSections(song.lyrics);
     const map = Object.fromEntries(sections.map((s) => [s.key, s]));
     const order = parseArrangement(song.arrangement, sections);
+    if (typeof document !== 'undefined') setFont(settings);
     const slides = [];
     for (const key of order) {
       const s = map[key];
       if (!s) continue;
       for (const chunk of s.chunks) {
-        for (let i = 0; i < chunk.length; i += perSlide) {
-          slides.push({ kind: 'text', label: s.label, text: chunk.slice(i, i + perSlide).join('\n') });
+        // Long lines that would wrap on the TV count as more than one line.
+        const screenLines = chunk.flatMap((line) => wrapLine(line, settings));
+        for (const group of splitEvenly(screenLines, perSlide)) {
+          slides.push({ kind: 'text', label: s.label, text: group.join('\n') });
         }
       }
     }
@@ -161,5 +204,5 @@
     return song;
   }
 
-  window.Songs = { parseSections, parseArrangement, buildSlides, parseSongFile, ccliFooter };
+  window.Songs = { parseSections, parseArrangement, buildSlides, parseSongFile, ccliFooter, splitEvenly };
 })();
