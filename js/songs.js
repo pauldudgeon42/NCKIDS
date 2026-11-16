@@ -11,8 +11,11 @@
  *   Yes, Jesus loves me ...
  *
  * Labels may also be written [Verse 1] or Verse 1:. A blank line inside a section
- * starts a new slide, and long sections are split every N lines (Settings).
- * The arrangement ("V1 C V2 C B C") picks the order; empty means "as written".
+ * starts a new slide, and long sections are split every N lines (Settings, or the
+ * song's own look). In the Slides view people can split and merge slides by hand,
+ * which sets song.slideMode = 'manual' and writes the breaks back as blank lines.
+ * The arrangement ("Verse 1, Chorus, Verse 2") picks the order; empty means "as written".
+ * cleanLyrics() tidies pasted chord charts: chords, CCLI lines, (x2) repeats, labels.
  */
 (function () {
   const SECTION_NAMES = [
@@ -104,28 +107,52 @@
     return out.length ? out : sections.map((s) => s.key);
   }
 
+  // ---------- the look of one song ----------
+  const SIZE_FACTORS = { smaller: 0.8, normal: 1, larger: 1.2 };
+  const STYLE_KEYS = ['linesPerSlide', 'size', 'position', 'uppercase'];
+
+  /** Does this song follow the Settings defaults (no look of its own)? */
+  function usesDefaults(song) {
+    return !(song.style && Object.keys(song.style).length) && !song.background;
+  }
+
+  /**
+   * Settings with this song's own look on top. `size` scales the biggest text size;
+   * `position` is 'center' or 'lower' (lower third).
+   */
+  function effectiveStyle(song, settings) {
+    const own = (song && song.style) || {};
+    const st = Object.assign({}, settings);
+    st.linesPerSlide = own.linesPerSlide || settings.linesPerSlide || 4;
+    st.position = own.position || settings.textPosition || 'center';
+    if (own.uppercase !== undefined) st.uppercase = own.uppercase;
+    st.size = own.size || 'normal';
+    st.maxFontSize = Math.round((Number(settings.maxFontSize) || 110) * (SIZE_FACTORS[st.size] || 1));
+    return st;
+  }
+
   // ---------- fitting lyrics on screen ----------
   // The lyrics area on the TV is 88% of a 1920px-wide stage (see renderer.js).
   const TEXT_WIDTH = 1920 * 0.88 * 0.97; // small safety margin for font differences
   let measureCtx = null;
-  function setFont(settings) {
+  function setFont(style) {
     if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
     // Text may shrink up to 20% to keep a line whole before it counts as two lines.
-    const size = (Number(settings.maxFontSize) || 110) * 0.8;
-    measureCtx.font = `700 ${size}px "${settings.font || 'Avenir Next'}", "Avenir Next", "Helvetica Neue", Arial, sans-serif`;
+    const size = (Number(style.maxFontSize) || 110) * 0.8;
+    measureCtx.font = `700 ${size}px "${style.font || 'Avenir Next'}", "Avenir Next", "Helvetica Neue", Arial, sans-serif`;
   }
-  function textWidth(t, settings) {
-    return measureCtx.measureText(settings.uppercase ? t.toUpperCase() : t).width;
+  function textWidth(t, style) {
+    return measureCtx.measureText(style.uppercase ? t.toUpperCase() : t).width;
   }
-  /** Break one lyric line into the lines it would take up on the TV at full text size. */
-  function wrapLine(line, settings) {
-    if (typeof document === 'undefined' || textWidth(line, settings) <= TEXT_WIDTH) return [line];
+  /** Break one lyric line into the lines it would take up on the TV. */
+  function wrapLine(line, style) {
+    if (typeof document === 'undefined' || textWidth(line, style) <= TEXT_WIDTH) return [line];
     const words = line.split(/\s+/);
     const out = [];
     let cur = '';
     for (const w of words) {
       const next = cur ? cur + ' ' + w : w;
-      if (!cur || textWidth(next, settings) <= TEXT_WIDTH) cur = next;
+      if (!cur || textWidth(next, style) <= TEXT_WIDTH) cur = next;
       else { out.push(cur); cur = w; }
     }
     if (cur) out.push(cur);
@@ -144,29 +171,144 @@
     return out;
   }
 
-  /** Build the slides for a song. */
-  function buildSlides(song, settings) {
-    const perSlide = Math.max(1, Number(settings.linesPerSlide) || 4);
+  /**
+   * Each section with its slides, in the order written: [{key, label, slides: [[line, …], …]}].
+   *  - Automatic (the default): blank lines start new slides, and long parts are
+   *    shared out so no slide passes "lines per slide" on the TV.
+   *  - By hand (song.slideMode === 'manual', set when Split here / Merge is used in
+   *    the Slides view): every blank line is a slide break and nothing else is changed.
+   */
+  function layout(song, settings) {
+    const st = effectiveStyle(song, settings);
     const sections = parseSections(song.lyrics);
-    const map = Object.fromEntries(sections.map((s) => [s.key, s]));
-    const order = parseArrangement(song.arrangement, sections);
-    if (typeof document !== 'undefined') setFont(settings);
+    if (song.slideMode === 'manual') {
+      return sections.map((s) => ({ key: s.key, label: s.label, slides: s.chunks.map((c) => c.slice()) }));
+    }
+    const per = Math.max(1, Number(st.linesPerSlide) || 4);
+    if (typeof document !== 'undefined') setFont(st);
+    return sections.map((s) => ({
+      key: s.key,
+      label: s.label,
+      slides: s.chunks.flatMap((chunk) => splitEvenly(chunk.flatMap((line) => wrapLine(line, st)), per)),
+    }));
+  }
+
+  /** Turn a layout back into lyrics text: a label line per section, a blank line between slides. */
+  function serialize(lay) {
+    return lay
+      .filter((s) => s.slides.some((sl) => sl.length))
+      .map((s) => s.label + '\n' + s.slides.filter((sl) => sl.length).map((sl) => sl.join('\n')).join('\n\n'))
+      .join('\n\n');
+  }
+
+  /** Build the slides for a song, in song order, each carrying the look to draw it with. */
+  function buildSlides(song, settings) {
+    const st = effectiveStyle(song, settings);
+    const lay = layout(song, settings);
+    const map = Object.fromEntries(lay.map((s) => [s.key, s]));
+    const order = parseArrangement(song.arrangement, lay);
     const slides = [];
     for (const key of order) {
       const s = map[key];
       if (!s) continue;
-      for (const chunk of s.chunks) {
-        // Long lines that would wrap on the TV count as more than one line.
-        const screenLines = chunk.flatMap((line) => wrapLine(line, settings));
-        for (const group of splitEvenly(screenLines, perSlide)) {
-          slides.push({ kind: 'text', label: s.label, text: group.join('\n') });
-        }
-      }
+      for (const group of s.slides) slides.push({ kind: 'text', label: s.label, key: s.key, text: group.join('\n'), style: st });
     }
-    if (slides.length && settings.showCcliFooter) {
-      slides[0].footer = ccliFooter(song, settings);
-    }
+    if (slides.length && settings.showCcliFooter) slides[0].footer = ccliFooter(song, settings);
     return slides;
+  }
+
+  /** Section type → color group, used for the colored section labels and order chips. */
+  function sectionKind(key) {
+    const k = String(key).replace(/\d+$/, '').toUpperCase();
+    return { V: 'verse', C: 'chorus', B: 'bridge', P: 'pre', T: 'tag' }[k] || 'other';
+  }
+
+  // ---------- tidying pasted lyrics ----------
+  const CHORD = /^[A-G](#|b|♯|♭)?(m|maj|min|dim|aug|sus|add|M)?\d{0,2}(sus\d?|add\d{1,2}|maj\d?|b\d|#\d|\+|°)*(\/[A-G](#|b|♯|♭)?)?$/;
+  const REPEAT_RE = /\s*[([]?\s*(?:x\s*(\d)|(\d)\s*x|repeat\s*x?\s*(\d)?)\s*[)\]]?\s*$/i;
+  const ABBREV = { V: 'Verse', C: 'Chorus', B: 'Bridge', PC: 'Pre-Chorus', P: 'Pre-Chorus', T: 'Tag' };
+
+  function isChordLine(line) {
+    const tokens = line.trim().split(/\s+/).filter((t) => t && !/^[|/.\-–—:]+$/.test(t) && !/^(N\.?C\.?)$/i.test(t));
+    return tokens.length > 0 && tokens.every((t) => CHORD.test(t.replace(/[()]/g, '')));
+  }
+
+  /**
+   * Clean up lyrics pasted from a chord chart, a website or a lyrics sheet.
+   * Returns { text, report: { chords, footer, repeats, labels, notes, longLines: [] }, changed }.
+   */
+  function cleanLyrics(raw, settings) {
+    const report = { chords: 0, footer: 0, repeats: 0, labels: 0, notes: 0, longLines: [] };
+    const lines = (raw || '').replace(/^﻿/, '').replace(/\r\n?/g, '\n').replace(/\t/g, ' ').split('\n');
+    const out = [];
+    let chunkStart = 0; // index in `out` where the current group of lines began
+    for (let raw2 of lines) {
+      let line = raw2.replace(/\s+$/, '');
+      const t = line.trim();
+      if (!t) { out.push(''); chunkStart = out.length; continue; }
+      // CCLI / copyright footer lines
+      if (/^(CCLI (Song|License)|For use solely|©|\(c\)\s|Copyright|www\.ccli\.com|All rights reserved|Public Domain$)/i.test(t)) { report.footer++; continue; }
+      // a line of chords only, e.g. "G    D/F#   Em7   C"
+      if (isChordLine(t)) { report.chords += t.split(/\s+/).length; continue; }
+      // chords written inside the words: [G]Amazing [D]grace
+      const bracketed = line.match(/\[[A-G][^\]\s]{0,8}\]/g);
+      if (bracketed) { report.chords += bracketed.length; line = line.replace(/\[[A-G][^\]\s]{0,8}\]/g, '').replace(/\s{2,}/g, ' ').trim(); }
+      const tt = line.trim();
+      // section labels: "VERSE 1:", "[Chorus]", "V1", "PC"
+      const ab = tt.match(/^\[?\s*(PC|V|C|B|P|T)\s*(\d{0,2})\s*\]?:?$/i);
+      if (ab) { out.push(ABBREV[ab[1].toUpperCase()] + (ab[2] ? ' ' + ab[2] : '')); report.labels++; chunkStart = out.length; continue; }
+      const hm = tt.match(HEADER_RE);
+      if (hm) {
+        const label = titleCase(hm[1].toLowerCase().replace(/\s+/g, ' ')) + (hm[2] ? ' ' + hm[2] : '');
+        if (label !== tt) report.labels++;
+        out.push(label); chunkStart = out.length; continue;
+      }
+      // a repeat marker on its own line: "(x2)" or "Repeat" → repeat the lines just above
+      const solo = tt.match(/^[([]?\s*(?:x\s*(\d)|(\d)\s*x|repeat\s*x?\s*(\d)?)\s*[)\]]?$/i);
+      if (solo) {
+        const n = Number(solo[1] || solo[2] || solo[3] || 2);
+        const block = out.slice(chunkStart).filter((l) => l);
+        for (let k = 1; k < n; k++) out.push(...block);
+        report.repeats++; continue;
+      }
+      // other notes in brackets on their own line: "(Instrumental)", "*Key change*", "(Repeat Chorus)"
+      if (/^[([*].*[)\]*]$/.test(tt)) { report.notes++; continue; }
+      // a repeat marker at the end of a line: "Deep and wide (x2)"
+      const rm = tt.match(REPEAT_RE);
+      if (rm && rm.index > 0) {
+        const n = Number(rm[1] || rm[2] || rm[3] || 2);
+        const words = tt.slice(0, rm.index).trim();
+        for (let k = 0; k < n; k++) out.push(words);
+        report.repeats++; continue;
+      }
+      out.push(tt);
+    }
+    const text = out.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\n+$/g, '');
+    // lines too long to fit on one line on the TV
+    if (typeof document !== 'undefined' && settings) {
+      const st = effectiveStyle({}, settings);
+      setFont(st);
+      for (const l of text.split('\n')) if (l && !HEADER_RE.test(l) && wrapLine(l, st).length > 1) report.longLines.push(l);
+    }
+    const changed = report.chords + report.footer + report.repeats + report.labels + report.notes > 0;
+    return { text, report, changed };
+  }
+
+  /** "Removed 14 chord letters and 3 CCLI footer lines, wrote out 2 repeats …" */
+  function describeCleanup(r) {
+    const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+    const join = (arr) => arr.join(', ').replace(/, ([^,]*)$/, ' and $1');
+    const removed = [];
+    if (r.chords) removed.push(plural(r.chords, 'chord', 'chords'));
+    if (r.footer) removed.push(plural(r.footer, 'CCLI or copyright line', 'CCLI or copyright lines'));
+    if (r.notes) removed.push(plural(r.notes, 'note like “(Instrumental)”', 'notes like “(Instrumental)”'));
+    const parts = [];
+    if (removed.length) parts.push('removed ' + join(removed));
+    if (r.repeats) parts.push('wrote out ' + plural(r.repeats, 'repeat marked “(x2)”', 'repeats marked “(x2)”'));
+    if (r.labels) parts.push('fixed ' + plural(r.labels, 'section label', 'section labels'));
+    if (!parts.length) return '';
+    const s = parts.length > 1 ? parts.slice(0, -1).join('; ') + '; and ' + parts[parts.length - 1] : parts[0];
+    return s[0].toUpperCase() + s.slice(1) + '.';
   }
 
   function ccliFooter(song, settings) {
@@ -212,10 +354,13 @@
       if (inFooter) continue;
       body.push(lines[i]);
     }
-    song.lyrics = body.join('\n').replace(/^\n+|\n+$/g, '');
+    song.lyrics = cleanLyrics(body.join('\n')).text;
     if (!song.title) song.title = fallbackTitle || 'Untitled song';
     return song;
   }
 
-  window.Songs = { parseSections, parseArrangement, buildSlides, parseSongFile, ccliFooter, splitEvenly };
+  window.Songs = {
+    parseSections, parseArrangement, buildSlides, parseSongFile, ccliFooter, splitEvenly,
+    layout, serialize, effectiveStyle, usesDefaults, sectionKind, cleanLyrics, describeCleanup, STYLE_KEYS,
+  };
 })();

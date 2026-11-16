@@ -70,6 +70,7 @@
         audioDeviceId: '',
         audioDeviceLabel: '',
         transitionSeconds: 0.5,
+        textPosition: 'center',  // or 'lower' (lower third); songs can override
         lastPlaylist: null,
         buildTheme: 'light',   // Settings → Appearance
         presentTheme: 'dark',

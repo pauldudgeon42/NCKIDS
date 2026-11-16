@@ -137,6 +137,7 @@
         inner.style.color = style.textColor || '#fff';
         if (style.uppercase) inner.style.textTransform = 'uppercase';
         inner.textContent = text;
+        if (style.position === 'lower') { inner.style.top = '56%'; inner.style.bottom = '5%'; }
         inner.style.opacity = '0';
         layer.appendChild(inner);
         fitText(inner, Number(style.maxFontSize) || 110);

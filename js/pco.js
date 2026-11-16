@@ -113,7 +113,7 @@
         author: pcoSong.author,
         copyright: pcoSong.copyright,
         ccli: pcoSong.ccli,
-        lyrics: cleanLyrics(arr.lyrics),
+        lyrics: window.Songs ? Songs.cleanLyrics(cleanLyrics(arr.lyrics)).text : cleanLyrics(arr.lyrics),
         arrangement: (arr.sequence || []).join(', '),
         pco: { songId: pcoSong.id, arrangementId: arr.id, arrangementName: arr.name, imported: new Date().toISOString() },
       };

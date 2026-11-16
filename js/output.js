@@ -127,7 +127,7 @@
       if (!slide) { r.setText(''); r.setFooter(''); r.setImage(null); r.stopVideo(); return; }
       if (slide.kind === 'text') {
         r.stopVideo(); r.setImage(null);
-        r.setText(slide.text, s); r.setFooter(slide.footer || '');
+        r.setText(slide.text, slide.style || s); r.setFooter(slide.footer || '');
       } else if (slide.kind === 'image') {
         r.stopVideo(); r.setText(''); r.setFooter('');
         r.setImage(slide.url);
@@ -208,7 +208,7 @@
     /** Re-apply text styling after settings change */
     refreshStyle() {
       const slide = this.state.slide;
-      if (slide && slide.kind === 'text') for (const r of this.renderers()) { r.setText(slide.text, this.settings()); }
+      if (slide && slide.kind === 'text') for (const r of this.renderers()) { r.setText(slide.text, slide.style || this.settings()); }
     },
   };
 
