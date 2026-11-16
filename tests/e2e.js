@@ -35,12 +35,14 @@ const OUT = __dirname + '/shots/';
   await page.click('[data-tab=songs]');
   await choose('#song-import', ['JesusLovesMe.txt']);
   await page.waitForSelector('#song-title');
+  await page.click('.seg [data-view=lyrics]');
   console.log('song:', await page.$eval('#song-title', (e) => e.value), '|', await page.$eval('#song-author', (e) => e.value), '|', await page.$eval('#song-ccli', (e) => e.value));
-  await page.fill('#song-arr', 'V1 C V2 C');
+  await page.waitForSelector('#song-order-add [data-add="Chorus"]');
+  await page.click('#song-order-add [data-add="Chorus"]'); // order becomes Verse 1, Chorus, Verse 2, Chorus
   console.log('song bg tiles:', await page.$$eval('#song-bg .bg-tile', (t) => t.map((x) => x.textContent.trim())));
   await page.click('#song-bg .bg-tile[title="bg space"]');
   await page.waitForTimeout(600);
-  console.log('song slides:', await page.$eval('#song-count', (e) => e.textContent));
+  console.log('song slides:', await page.evaluate(() => Songs.buildSlides(Store.data.songs[0], Store.data.settings).length));
   await page.screenshot({ path: OUT + '1-song-editor.png' });
   // line-splitting: 6 short lines -> 3 + 3; a very long line counts as several screen lines
   await page.click('#song-new');

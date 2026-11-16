@@ -3,6 +3,16 @@
 Plain-English notes on what changed in each version. Newest first.
 Version numbers: **major.minor.fix**. A new minor number means new features, and a new fix number means bug fixes only.
 
+## v0.5.0 — more control over songs (November 2026)
+
+- **Slides view for songs:** see a song as its actual slides, grouped by part. Hover between two lines for **Split here** to start a new slide, or use **Merge** where two slides meet to join them. Click any words to fix them right on the slide. Once you split or merge, the song keeps your breaks, and **Let the app split them again** undoes that.
+- **Lyrics view** keeps the text box (plus author, copyright and CCLI number). Switch between the two with the Slides / Lyrics buttons.
+- **Paste cleanup:** pasting lyrics removes chord letters (chord-only lines and [G]-style chords), CCLI and copyright lines and notes like "(Instrumental)". It writes out "(x2)" repeats and fixes section labels ("VERSE 1:", "[Chorus]", "V1"). A note lists what changed, with **Undo**. It also warns about lines too long for one line on the TV. **Tidy up these lyrics** does the same for lyrics already in a song, and SongSelect and Planning Center imports are tidied automatically.
+- **Song order chips:** colored chips that match each part. Drag to reorder, click × to remove, click "+ Chorus" to add. **Use the order written** clears it.
+- **Look for this song:** each song uses the Settings defaults until you change something here: lines per slide, text position (centered or lower third), text size (smaller, normal, larger), all caps and background. Tick **Use Settings defaults** to go back.
+- **Text position** default added to Settings → Lyrics on the TV.
+- Updating a song from Planning Center asks first if you've arranged its slides by hand.
+
 ## v0.4.0 — new look (November 2026)
 
 - **Redesigned throughout:** friendlier, rounded look with cards, a softer typeface and clearer buttons. All emojis are replaced with simple line icons.
