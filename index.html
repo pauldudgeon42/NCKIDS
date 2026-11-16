@@ -1,29 +1,43 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NC Kids Presenter</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%E2%AD%90%3C/text%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230F766E'/%3E%3Cpath fill='white' d='M12 4.5l2.2 4.5 4.9.7-3.6 3.5.9 4.9L12 15.8l-4.4 2.3.9-4.9L4.9 9.7l4.9-.7z'/%3E%3C/svg%3E">
+  <!-- Rounded, friendly typeface. If the Mac is offline it falls back to Avenir Next. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&family=Nunito+Sans:opsz,wght@6..12,400;6..12,600;6..12,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
 
   <header id="topbar" class="hidden">
-    <div class="brand"><span class="star">★</span> NC Kids Presenter</div>
-    <nav id="modes" class="modes">
+    <div class="brand">
+      <span class="brand-mark"><svg class="i" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5L2.6 9.3l6.5-.9z"/></svg></span>
+      NC Kids
+    </div>
+    <nav id="modes" class="modes" aria-label="Mode">
       <button data-mode="present" class="active">Present</button>
       <button data-mode="build">Build</button>
     </nav>
+    <nav id="build-tabs" class="build-tabs hidden" aria-label="Build sections">
+      <button data-tab="playlists" class="active">Playlists</button>
+      <button data-tab="songs">Songs</button>
+      <button data-tab="lessons">Lessons</button>
+      <button data-tab="videos">Videos</button>
+      <button data-tab="backgrounds">Backgrounds</button>
+      <button data-tab="settings">Settings</button>
+    </nav>
     <div class="spacer"></div>
-    <span id="save-status" class="muted small"></span>
-    <button id="tv-btn" class="tv-btn">📺 Start TV</button>
+    <span id="save-status"></span>
+    <button id="tv-btn" class="tv-btn">Start TV</button>
   </header>
 
   <!-- First visit: choose where the library lives -->
   <div id="setup" class="setup hidden">
-    <div class="setup-card">
-      <h1><span class="star">★</span> NC Kids Presenter</h1>
+    <div class="setup-card card">
+      <h1><span class="brand-mark"><svg class="i" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5L2.6 9.3l6.5-.9z"/></svg></span>NC Kids Presenter</h1>
       <div id="setup-actions">
         <p>All songs, lessons, videos and backgrounds are kept in one folder on this Mac.
           Pick that folder (or make a new empty one, such as <b>NC Kids Library</b> in iCloud Drive).</p>
@@ -39,70 +53,61 @@
 
   <!-- PRESENT -->
   <main id="present" class="present hidden">
-    <aside class="p-col p-left">
-      <label class="lbl" for="present-playlist">Playlist</label>
-      <select id="present-playlist"></select>
+    <aside class="p-col p-left card">
+      <div class="pl-picker">
+        <label for="present-playlist" class="hidden">Playlist</label>
+        <select id="present-playlist"></select>
+        <svg class="i chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div id="present-date" class="pl-date"></div>
       <div id="present-empty" class="hidden empty-note">
-        <p>No playlists yet.</p>
+        <p style="margin-top:0">No playlists yet.</p>
         <button class="btn primary" id="present-goto-build">Make a playlist</button>
       </div>
       <ol id="present-items" class="p-items"></ol>
     </aside>
 
-    <section class="p-col p-center">
-      <h2 id="present-title" class="p-title"></h2>
-      <div id="present-slides" class="slide-grid"></div>
-    </section>
+    <section id="present-slides" class="p-col p-center" aria-label="Slides"></section>
 
-    <aside class="p-col p-right">
-      <div class="lbl">On the TV now</div>
+    <aside class="p-col p-right card">
+      <div class="live-head"><h3>On the TV</h3><span class="live-pill">Live</span></div>
       <div id="live-preview" class="live-preview"></div>
 
       <div id="video-controls" class="video-controls hidden">
         <div class="vc-track"><div id="vc-bar" class="vc-bar"></div></div>
         <div id="vc-time" class="vc-time">0:00</div>
         <div class="row gap">
-          <button class="btn" id="vc-play">❚❚ Pause</button>
-          <button class="btn" id="vc-back" title="Back 10 seconds">−10s</button>
-          <button class="btn" id="vc-fwd" title="Forward 10 seconds">+10s</button>
-          <button class="btn" id="vc-restart" title="Start over">⟲</button>
+          <button class="btn small" id="vc-play">Pause</button>
+          <button class="btn small" id="vc-back" title="Back 10 seconds">−10s</button>
+          <button class="btn small" id="vc-fwd" title="Forward 10 seconds">+10s</button>
+          <button class="btn small" id="vc-restart" title="Start over">Restart</button>
         </div>
       </div>
 
-      <div class="nav-buttons">
-        <button class="btn huge" id="btn-prev" title="Previous (←)">◀ Back</button>
-        <button class="btn huge primary" id="btn-next" title="Next (→ or Space)">Next ▶</button>
-      </div>
+      <button class="next-btn" id="btn-next" title="Next (→ or Space)">Next
+        <svg class="i" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
       <div class="live-buttons">
-        <button class="btn live-btn" id="btn-clear" title="Remove words / slide / video, keep the background (C)">Clear<small>C</small></button>
-        <button class="btn live-btn" id="btn-black" title="Black screen (B)">Black<small>B</small></button>
-        <button class="btn live-btn" id="btn-logo" title="Show logo (L)">Logo<small>L</small></button>
+        <button class="live-btn" id="btn-prev" title="Previous slide (←)">Back</button>
+        <button class="live-btn" id="btn-clear" title="Remove words, slide or video but keep the background (C)">Clear</button>
+        <button class="live-btn" id="btn-black" title="Black screen (B)">Black</button>
+        <button class="live-btn" id="btn-logo" title="Show logo (L)">Logo</button>
       </div>
+      <div class="divider"></div>
       <div class="bank">
-        <div class="row bank-head">
-          <div class="lbl">Backgrounds — click to change live</div>
-          <button class="btn small hidden" id="bank-reset" title="Go back to the backgrounds chosen for each song">↺ Song's own</button>
+        <div class="bank-head">
+          <h3>Backgrounds</h3>
+          <button class="btn small hidden" id="bank-reset" title="Go back to the backgrounds chosen for each song">Song's own</button>
         </div>
         <div id="bg-bank" class="bg-bank"></div>
       </div>
       <div class="keys-help">
-        <b>Keyboard / clicker</b><br>
-        → or Space: next · ←: back<br>
-        B: black · C: clear · L: logo · P: pause video
+        <kbd>→</kbd> or <kbd>Space</kbd> next · <kbd>←</kbd> back · <kbd>B</kbd> black · <kbd>C</kbd> clear · <kbd>L</kbd> logo · <kbd>P</kbd> pause video
       </div>
     </aside>
   </main>
 
   <!-- BUILD -->
   <main id="build" class="build hidden">
-    <nav id="build-tabs" class="build-tabs">
-      <button data-tab="playlists" class="active">Playlists</button>
-      <button data-tab="songs">Songs</button>
-      <button data-tab="lessons">Lessons</button>
-      <button data-tab="videos">Videos</button>
-      <button data-tab="backgrounds">Backgrounds</button>
-      <button data-tab="settings">Settings</button>
-    </nav>
     <div id="build-body" class="build-body"></div>
   </main>
 

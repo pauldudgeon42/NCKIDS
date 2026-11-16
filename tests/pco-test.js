@@ -58,6 +58,7 @@ const api = {
   await page.goto('http://localhost:8765/?demo');
   await page.waitForSelector('#build:not(.hidden)');
   await page.click('[data-tab=settings]');
+  await page.click('[data-sec=pco]');
   await page.fill('#pco-app', 'APPID'); await page.fill('#pco-secret', 'WRONG');
   await page.click('#pco-save'); await page.waitForTimeout(400);
   console.log('wrong secret:', await page.$eval('#pco-test', (e) => e.textContent));
@@ -90,7 +91,7 @@ const api = {
   console.log('library songs:', JSON.stringify(songs, null, 1));
   await page.click('#song-list li:has-text("Grace Alone")');
   await page.waitForSelector('#song-pco-update');
-  console.log('editor note:', await page.$eval('.pco-note', (e) => e.textContent.replace(/\s+/g, ' ').trim()));
+  console.log('editor tag:', await page.$eval('.pco-tag', (e) => e.textContent + ' | ' + e.title));
   await page.evaluate(() => { Store.data.songs.find((s) => s.title === 'Grace Alone').background = 'none'; });
   await page.click('#song-pco-update');
   await page.waitForTimeout(500);

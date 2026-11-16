@@ -52,7 +52,10 @@ const OUT = __dirname + '/shots/';
   await page.click('#song-del');
 
   await page.click('[data-tab=settings]');
+  await page.screenshot({ path: OUT + '2a-settings-appearance.png' });
+  await page.click('[data-sec=ccli]');
   await page.fill('#set-ccli', '999999');
+  await page.click('[data-sec=logo]');
   const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click('#set-logo')]);
   await fc.setFiles(M + 'logo.png');
   await page.waitForTimeout(500);
@@ -65,8 +68,10 @@ const OUT = __dirname + '/shots/';
   }
   console.log('playlist items:', await page.$$eval('#pl-items li', (l) => l.length));
   await page.screenshot({ path: OUT + '3-playlist.png' });
+  console.log('theme in build:', await page.evaluate(() => document.documentElement.dataset.theme));
 
   await page.click('#pl-present');
+  console.log('theme in present:', await page.evaluate(() => document.documentElement.dataset.theme));
   await page.waitForSelector('#present:not(.hidden) .slide-card');
   const [tv] = await Promise.all([ctx.waitForEvent('page'), page.click('#tv-btn')]);
   await page.waitForTimeout(500);
@@ -89,9 +94,14 @@ const OUT = __dirname + '/shots/';
   console.log('next slide keeps bank bg:', await bgTitle());
   await page.screenshot({ path: OUT + '4b-present-bank.png' });
   await page.keyboard.press('ArrowLeft');
-  for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowRight'); // rest of song → lesson slide 1
+  console.log('sections shown at once:', await page.$$eval('#present-slides .p-section', (s) => s.length), '| all slide cards:', await page.$$eval('#present-slides .slide-card', (c) => c.length));
+  await page.keyboard.press('c');
+  await page.keyboard.press('ArrowRight'); // after Clear, Next should continue (song slide 3), not restart
+  await page.waitForTimeout(200);
+  console.log('after clear + next, live card:', await page.$eval('#present-slides .slide-card.live', (c) => c.dataset.item + '/' + c.dataset.slide));
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight'); // rest of song → lesson slide 1
   await page.waitForTimeout(800);
-  console.log('live item after song:', await page.$eval('.p-item.live .name', (e) => e.textContent));
+  console.log('live item after song:', await page.$eval('.p-item.now .name', (e) => e.textContent));
   await tv.screenshot({ path: OUT + '6-tv-lesson.png' });
   for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowRight'); // → video
   await page.waitForTimeout(1500);

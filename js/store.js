@@ -71,6 +71,9 @@
         audioDeviceLabel: '',
         transitionSeconds: 0.5,
         lastPlaylist: null,
+        buildTheme: 'light',   // Settings → Appearance
+        presentTheme: 'dark',
+        accent: 'teal',
       },
     };
   }

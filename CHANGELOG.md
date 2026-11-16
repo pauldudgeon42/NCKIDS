@@ -3,6 +3,17 @@
 Plain-English notes on what changed in each version. Newest first.
 Version numbers: **major.minor.fix**. A new minor number means new features, and a new fix number means bug fixes only.
 
+## v0.4.0 — new look (November 2026)
+
+- **Redesigned throughout:** friendlier, rounded look with cards, a softer typeface and clearer buttons. All emojis are replaced with simple line icons.
+- **Present is dark, Build is light (by default),** so it's obvious at a glance whether you're presenting or editing. **Settings → Appearance** lets you choose light or dark for each mode, plus an accent color (teal, blue, orange or purple).
+- **The whole playlist scrolls as one list in Present mode.** Every song, lesson and video is shown one after another. Click an item on the left to jump to it. Next starts that item. The view follows along as slides go live.
+- **The playlist shows progress:** finished items get a check mark, the current one is highlighted ("on the TV now"), and the next one says "up next".
+- **Bigger Next button** with Back, Clear, Black and Logo underneath.
+- After **Clear**, or when a video finishes, Next carries on from where you were instead of starting the playlist over.
+- **Settings is split into sections:** Appearance, Lyrics on the TV, TV and sound, Logo, CCLI, Planning Center, Library folder.
+- The section tabs for Build mode now sit in the top bar.
+
 ## v0.3.0 — songs from Planning Center (November 2026)
 
 - **Import songs from Planning Center:** Songs tab → **⬇ From Planning Center**. Search the whole song bank, click a song to see its SongSelect lyrics, pick the arrangement, and import it. You can also tick several songs and import them all at once.
