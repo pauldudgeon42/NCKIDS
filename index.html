@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NC Kids Presenter</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%E2%AD%90%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+  <header id="topbar" class="hidden">
+    <div class="brand"><span class="star">★</span> NC Kids Presenter</div>
+    <nav id="modes" class="modes">
+      <button data-mode="present" class="active">Present</button>
+      <button data-mode="build">Build</button>
+    </nav>
+    <div class="spacer"></div>
+    <span id="save-status" class="muted small"></span>
+    <button id="tv-btn" class="tv-btn">📺 Start TV</button>
+  </header>
+
+  <!-- First visit: choose where the library lives -->
+  <div id="setup" class="setup hidden">
+    <div class="setup-card">
+      <h1><span class="star">★</span> NC Kids Presenter</h1>
+      <div id="setup-actions">
+        <p>All songs, lessons, videos and backgrounds are kept in one folder on this Mac.
+          Pick that folder (or make a new empty one, such as <b>NC Kids Library</b> in iCloud Drive).</p>
+        <button class="btn primary big hidden" id="reconnect">Open library</button>
+        <button class="btn big" id="choose-folder">Choose library folder…</button>
+        <p class="hint">Chrome will ask to let this page edit files in that folder. Choose <b>Allow on every visit</b> if it's offered.</p>
+      </div>
+      <div id="setup-unsupported" class="hidden">
+        <p><b>Please open this page in Google Chrome</b> (or Microsoft Edge). Safari and Firefox can't save to a folder yet.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- PRESENT -->
+  <main id="present" class="present hidden">
+    <aside class="p-col p-left">
+      <label class="lbl" for="present-playlist">Playlist</label>
+      <select id="present-playlist"></select>
+      <div id="present-empty" class="hidden empty-note">
+        <p>No playlists yet.</p>
+        <button class="btn primary" id="present-goto-build">Make a playlist</button>
+      </div>
+      <ol id="present-items" class="p-items"></ol>
+    </aside>
+
+    <section class="p-col p-center">
+      <h2 id="present-title" class="p-title"></h2>
+      <div id="present-slides" class="slide-grid"></div>
+    </section>
+
+    <aside class="p-col p-right">
+      <div class="lbl">On the TV now</div>
+      <div id="live-preview" class="live-preview"></div>
+
+      <div id="video-controls" class="video-controls hidden">
+        <div class="vc-track"><div id="vc-bar" class="vc-bar"></div></div>
+        <div id="vc-time" class="vc-time">0:00</div>
+        <div class="row gap">
+          <button class="btn" id="vc-play">❚❚ Pause</button>
+          <button class="btn" id="vc-back" title="Back 10 seconds">−10s</button>
+          <button class="btn" id="vc-fwd" title="Forward 10 seconds">+10s</button>
+          <button class="btn" id="vc-restart" title="Start over">⟲</button>
+        </div>
+      </div>
+
+      <div class="nav-buttons">
+        <button class="btn huge" id="btn-prev" title="Previous (←)">◀ Back</button>
+        <button class="btn huge primary" id="btn-next" title="Next (→ or Space)">Next ▶</button>
+      </div>
+      <div class="live-buttons">
+        <button class="btn live-btn" id="btn-clear" title="Remove words / slide / video, keep the background (C)">Clear<small>C</small></button>
+        <button class="btn live-btn" id="btn-black" title="Black screen (B)">Black<small>B</small></button>
+        <button class="btn live-btn" id="btn-logo" title="Show logo (L)">Logo<small>L</small></button>
+      </div>
+      <div class="keys-help">
+        <b>Keyboard / clicker</b><br>
+        → or Space: next · ←: back<br>
+        B: black · C: clear · L: logo · P: pause video
+      </div>
+    </aside>
+  </main>
+
+  <!-- BUILD -->
+  <main id="build" class="build hidden">
+    <nav id="build-tabs" class="build-tabs">
+      <button data-tab="playlists" class="active">Playlists</button>
+      <button data-tab="songs">Songs</button>
+      <button data-tab="lessons">Lessons</button>
+      <button data-tab="videos">Videos</button>
+      <button data-tab="backgrounds">Backgrounds</button>
+      <button data-tab="settings">Settings</button>
+    </nav>
+    <div id="build-body" class="build-body"></div>
+  </main>
+
+  <div id="toast"></div>
+  <div id="busy" class="busy"><div><div class="spinner"></div><span>Working…</span></div></div>
+  <div id="modal" class="modal"></div>
+
+  <script src="js/store.js"></script>
+  <script src="js/songs.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/media.js"></script>
+  <script src="js/output.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
