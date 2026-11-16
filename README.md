@@ -52,6 +52,8 @@ Pick the song's background by clicking a picture under **Background** ("Default"
 A blank line inside a part starts a new slide. Parts longer than 4 lines on the TV are split onto more slides automatically, and long lines that wrap count as two (change the number in Settings → Lines per slide). Use **Order** to repeat parts, e.g. `V1 C V2 C`.
 If you download lyrics from **CCLI SongSelect** as a `.txt` file, use **Import .txt**. The title, authors and CCLI number fill in automatically.
 
+**Songs from Planning Center (easiest):** Songs tab → **⬇ From Planning Center**. Type part of the title, click the song to check the lyrics and choose the arrangement, then **Import this song**. Or tick several songs and click **Import ticked songs**. The lyrics, song order and CCLI details all come across. If the song changes in Planning Center later, open it and click **↻ Update from Planning Center**.
+
 **Lesson slides:** Lessons tab → **+ From a folder…** and choose the lesson's JPEG folder from the curriculum download. The slides come in order (Slide 2 before Slide 10). You can also pick individual pictures, or drag them in from Finder.
 
 **Videos:** Videos tab → **Import videos…**. MP4 works best. If a video won't import, it's in a format Chrome can't play. Open it in QuickTime and use *File → Export As → 1080p* to fix it.
@@ -69,6 +71,7 @@ If you download lyrics from **CCLI SongSelect** as a `.txt` file, use **Import .
 5. Click **📺 Start TV** with the TV plugged in. Chrome will ask to *manage windows on all your displays*. Click **Allow** so the TV window opens on the TV by itself. If Chrome blocks the pop-up, click the icon in the address bar and choose **Always allow pop-ups**.
 6. **Sound:** connect the TV by HDMI and choose the TV in **Control Center → Sound** on the Mac. (Or go to **Build → Settings → TV sound → Find speakers…** and pick the TV there.)
 7. Add your church's **CCLI License #** and a **logo** in Build → Settings.
+8. **Planning Center (optional):** in Build → Settings → Planning Center, follow the three steps to paste in an access token, then click **Save & test**. Use a Planning Center login made just for the classroom with **Services: Viewer** access only, because the token can see everything its login can. The token is stored only in Chrome on that Mac.
 
 > The library folder is the important part. The app itself can be re-downloaded at any time, but songs, lessons, videos and playlists only live in that folder.
 
@@ -80,6 +83,7 @@ If you download lyrics from **CCLI SongSelect** as a `.txt` file, use **Import .
 - **Video has no sound on the TV:** Control Center → Sound → choose the TV. Then check Build → Settings → TV sound.
 - **"Open library" doesn't appear, or the library is empty:** Build → Settings → *Switch to a different folder…* and pick the library folder again.
 - **The playlist list got messed up:** inside the library folder, `backups/` has a dated copy of the list (`library-YYYY-MM-DD.json`). Close the app, copy the copy you want over `library.json`, and reopen.
+- **Planning Center says it "couldn't reach Planning Center":** check the internet connection. If the internet works, Planning Center may not be letting this page connect directly. Tell whoever maintains the app (see docs/MAINTAINING.md → Planning Center).
 - **A new version of the app broke something:** see "Going back to an older version" below.
 
 ## Going back to an older version

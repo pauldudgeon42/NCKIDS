@@ -12,6 +12,7 @@ js/songs.js         lyrics → slides, arrangement ("V1 C V2 C"), CCLI SongSelec
 js/renderer.js      draws one slide on a 1920×1080 stage (used for the TV, the preview and thumbnails)
 js/media.js         importing backgrounds / videos / lesson images, making thumbnails
 js/output.js        the TV window and live preview, black/clear/logo, video controls
+js/pco.js           reads songs + arrangements (lyrics, order) from the Planning Center Services API
 js/app.js           all the screens and buttons
 tests/              automated smoke test (optional, for developers)
 ```
@@ -23,6 +24,12 @@ tests/              automated smoke test (optional, for developers)
 - **One library folder, chosen by the user.** Chrome remembers it (IndexedDB) and asks for permission again when needed. The app code and the content are kept separate on purpose: the app can be replaced or rolled back without touching songs, lessons or videos.
 - **One `library.json`** holds all songs, lessons, videos, backgrounds, playlists and settings. Media files sit next to it in `media/`. It's human-readable, so you can open it in a text editor if needed.
 - **Chrome (or Edge) only.** Safari and Firefox don't support saving to a folder.
+
+### Planning Center
+
+`js/pco.js` calls the Planning Center Services API (`/services/v2/songs` and `/songs/{id}/arrangements`) with a Personal Access Token using HTTP basic auth. Lyrics come from the arrangement's `lyrics` field (where SongSelect imports put them), and the song order from its `sequence`. The token is kept in `localStorage`, deliberately **not** in `library.json`, so it never ends up in iCloud, backups or GitHub. Imported songs carry a `pco: { songId, arrangementId, arrangementName, imported }` field.
+
+**If the import says it "couldn't reach Planning Center" while the internet works**, Planning Center is probably refusing requests made directly from a web page (a browser rule called CORS). The fix is to move that call out of the browser: either the standalone Mac app (Electron), which isn't subject to that rule, or a tiny relay. `tests/pco-test.js` checks the import against a fake Planning Center, so it can't detect this. Only the real classroom Mac can.
 
 ### The library folder
 
@@ -67,6 +74,8 @@ cd tests
 python3 -m http.server 8765 --directory ..  &
 node e2e.js                   # imports everything, builds a playlist, runs it on a "TV" window
 ```
+
+`node pco-test.js` checks the Planning Center import against a fake Planning Center (no real account needed).
 
 It prints what it checked and lists any page errors at the end (`ERRORS: none` is the goal). Screenshots go to `tests/shots/`.
 

@@ -3,6 +3,14 @@
 Plain-English notes on what changed in each version. Newest first.
 Version numbers: **major.minor.fix**. A new minor number means new features, and a new fix number means bug fixes only.
 
+## v0.3.0 — songs from Planning Center (November 2026)
+
+- **Import songs from Planning Center:** Songs tab → **⬇ From Planning Center**. Search the whole song bank, click a song to see its SongSelect lyrics, pick the arrangement, and import it. You can also tick several songs and import them all at once.
+- Imported songs bring their **lyrics, song order (from the arrangement), authors, copyright and CCLI number**, so the credits slide is filled in automatically.
+- **↻ Update from Planning Center** on an imported song pulls the latest lyrics and order (the chosen background stays).
+- Song order matching is more forgiving: "Chorus 1" matches a part labeled "Chorus", and parts with no lyrics (like "Instrumental") are skipped.
+- Connection is set up once in **Settings → Planning Center**. The access token stays in Chrome on that Mac and is never saved to the library folder.
+
 ## v0.2.0 — backgrounds you can see and change live (November 2026)
 
 - **Live background bank in Present mode:** click any background under "Backgrounds" to change what's behind the words right away. It stays for the following slides and songs. A song that was given its own background still switches to it. Click **↺ Song's own** to go back to each song's chosen backgrounds.

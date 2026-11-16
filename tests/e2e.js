@@ -44,6 +44,7 @@ const OUT = __dirname + '/shots/';
   await page.screenshot({ path: OUT + '1-song-editor.png' });
   // line-splitting: 6 short lines -> 3 + 3; a very long line counts as several screen lines
   await page.click('#song-new');
+  await page.waitForFunction(() => document.querySelector('#song-title') && document.querySelector('#song-title').value === 'New song');
   await page.fill('#song-lyrics', 'Verse 1\nOne\nTwo\nThree\nFour\nFive\nSix\n\nChorus\nThis is a really long line of lyrics that goes on and on and will never fit across the screen\nShort line\nAnother line\nLast line');
   await page.waitForTimeout(700);
   const split = await page.evaluate(() => Songs.buildSlides(Store.data.songs.find((x) => x.title === 'New song'), Store.data.settings).map((s) => s.text.split('\n').length));
