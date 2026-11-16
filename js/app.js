@@ -7,7 +7,7 @@
  * Data lives in Store.data (see store.js). Call Store.save() after changing it.
  */
 (function () {
-  const APP_VERSION = '0.4.0';
+  const APP_VERSION = '0.5.0';
 
   // ---------- small helpers ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -172,7 +172,7 @@
     r.setFade(0);
     const bg = bgOverride !== undefined ? bgOverride : slide.bg;
     if (bg) r.setBackground(bg);
-    if (slide.kind === 'text') { r.setText(slide.text, S()); r.setFooter(slide.footer || ''); }
+    if (slide.kind === 'text') { r.setText(slide.text, slide.style || S()); r.setFooter(slide.footer || ''); }
     else if (slide.kind === 'image') r.setImage(slide.url);
     else if (slide.kind === 'video') r.setVideoPoster(slide.thumb);
     return r;
@@ -716,11 +716,14 @@
   }
 
   // ---------- Songs ----------
+  // Middle: the song as slides (split / merge / edit words) or as lyrics text.
+  // Right: song order chips and "Look for this song" (per-song style).
   function buildSongs(body) {
     const songs = sortedBy(D().songs);
     if (B.song && !byId('songs', B.song)) B.song = null;
     if (!B.song && songs[0]) B.song = songs[0].id;
     const song = byId('songs', B.song);
+    if (song && B.songViewFor !== song.id) { B.songView = (song.lyrics || '').trim() ? 'slides' : 'lyrics'; B.songViewFor = song.id; }
     body.innerHTML = `
       <section class="col card col-list">
         <div class="col-head"><h2>Songs</h2><button class="btn primary small" id="song-new">${icon('plus', 14)} New song</button></div>
@@ -733,33 +736,29 @@
       </section>
       <section class="col card col-main song-editor">
         ${song ? `
-        <div class="col-head"><input class="title-input" id="song-title" value="${esc(song.title)}" aria-label="Song title">
+        <div class="col-head">
+          <input class="title-input" id="song-title" value="${esc(song.title)}" aria-label="Song title">
           ${song.pco ? `<span class="pco-tag" title="${song.pco.arrangementName ? 'Arrangement: ' + esc(song.pco.arrangementName) : ''}">From Planning Center</span>
-          <button class="btn small" id="song-pco-update" title="Replace the lyrics and order with the latest from Planning Center. The background stays.">${icon('refresh', 14)} Update</button>` : ''}</div>
-        <div class="form-grid">
-          <label>Author(s)<input id="song-author" value="${esc(song.author)}"></label>
-          <label>Copyright<input id="song-copyright" value="${esc(song.copyright)}"></label>
-          <label>CCLI Song #<input id="song-ccli" value="${esc(song.ccli)}"></label>
+          <button class="btn small" id="song-pco-update" title="Replace the lyrics and order with the latest from Planning Center. The look and background stay.">${icon('refresh', 14)} Update</button>` : ''}
+          <div class="seg" role="tablist" aria-label="Edit as">
+            <button role="tab" data-view="slides" class="${B.songView === 'slides' ? 'on' : ''}" aria-selected="${B.songView === 'slides'}">Slides</button>
+            <button role="tab" data-view="lyrics" class="${B.songView === 'lyrics' ? 'on' : ''}" aria-selected="${B.songView === 'lyrics'}">Lyrics</button>
+          </div>
         </div>
-        <div class="block-label">Background
-          <span class="hint">Click the background to show behind this song. “Default” uses the default from the Backgrounds tab.</span>
-          <div class="bg-tiles" id="song-bg"></div>
-        </div>
-        <label class="block">Lyrics
-          <span class="hint">Put a label like <b>Verse 1</b>, <b>Chorus</b> or <b>Bridge</b> on its own line before each part. A blank line starts a new slide.</span>
-          <textarea id="song-lyrics" spellcheck="true" placeholder="Verse 1&#10;Jesus loves me, this I know&#10;For the Bible tells me so&#10;&#10;Chorus&#10;Yes, Jesus loves me…">${esc(song.lyrics)}</textarea>
-        </label>
-        <label class="block">Order (optional)
-          <span class="hint">Click the parts to build the order, or type it (e.g. <code>V1 C V2 C B C</code>). Leave empty to use the order written above.</span>
-          <div class="row gap"><input id="song-arr" value="${esc(song.arrangement)}" placeholder="As written"><button class="btn small" id="song-arr-clear">Clear</button></div>
-          <div class="chips" id="song-parts"></div>
-        </label>
-        <div class="row gap"><button class="btn danger" id="song-del">Delete song</button></div>` : '<p class="muted pad">Add your first song with “+ New song”, or import lyrics files from CCLI SongSelect.</p>'}
+        <div id="song-view" class="song-view"></div>` : '<p class="muted pad">Add your first song with “New song”, or import lyrics from CCLI SongSelect or Planning Center.</p>'}
       </section>
-      <section class="col col-preview">
-        <div class="col-head"><h2>Slides</h2><span class="muted" id="song-count"></span></div>
-        <div class="slide-grid small" id="song-slides"></div>
-      </section>`;
+      ${song ? `
+      <section class="col card col-side">
+        <div class="side-block">
+          <h3>Song order</h3>
+          <div class="order-chips" id="song-order"></div>
+          <div class="order-add" id="song-order-add"></div>
+        </div>
+        <div class="divider"></div>
+        <div class="side-block" id="song-look"></div>
+        <div class="spacer"></div>
+        <div><button class="btn danger small" id="song-del">Delete song</button></div>
+      </section>` : ''}`;
 
     const renderList = () => {
       const q = ($('#song-search').value || '').toLowerCase();
@@ -790,41 +789,212 @@
     };
     if (!song) return;
 
-    let previewTimer;
-    const renderPreview = async () => {
-      const slides = Songs.buildSlides(song, S());
-      const bg = await resolveBg(song.background || S().defaultBackground);
-      const grid = $('#song-slides');
-      if (!grid) return;
-      grid.innerHTML = '';
-      $('#song-count').textContent = `${slides.length} slide${slides.length === 1 ? '' : 's'}`;
-      slides.forEach((s, i) => { const c = slideCard(s, i); grid.appendChild(c); drawThumb(c.querySelector('.thumb'), s, bg); });
-      const sections = Songs.parseSections(song.lyrics);
-      $('#song-parts').innerHTML = sections.map((s) => `<button class="chip" data-key="${esc(s.key)}" title="${esc(s.label)}">${esc(s.key)} · ${esc(s.label)}</button>`).join('');
-    };
-    const changed = () => { Store.save(); invalidateSlides(); clearTimeout(previewTimer); previewTimer = setTimeout(renderPreview, 250); };
-    renderPreview();
+    const changed = () => { Store.save(); invalidateSlides(); };
+    const view = $('#song-view');
 
-    const bindField = (sel, key, rerenderList) => {
-      $(sel).oninput = (e) => { song[key] = e.target.value; changed(); };
-      if (rerenderList) $(sel).onchange = renderList;
+    // ----- Slides view -----
+    const renderSlidesView = async () => {
+      const lay = Songs.layout(song, S());
+      if (!lay.length) {
+        view.innerHTML = '<p class="muted pad">No lyrics yet. Switch to <b>Lyrics</b> and paste them in.</p>';
+        return;
+      }
+      const st = Songs.effectiveStyle(song, S());
+      const bg = await resolveBg(songBgId(null, song));
+      const img = bg ? (bg.type === 'video' ? bg.thumb : bg.url) : null;
+      const cardStyle = img ? `background-image:url('${img}')` : 'background:#000';
+      const textStyle = `font-family:'${esc(st.font)}', 'Avenir Next', sans-serif; color:${esc(st.textColor || '#fff')}; font-size:${Math.max(11, Math.round(st.maxFontSize * 0.15))}px;${st.uppercase ? ' text-transform:uppercase;' : ''}`;
+      view.innerHTML = `
+        <p class="hint">Hover between two lines: <b>Split here</b> starts a new slide, and <b>Merge</b> joins two slides back together. Click any words to edit them.</p>
+        ${song.slideMode === 'manual' ? `<div class="manual-note">Slide breaks in this song are set by hand. <button class="link-btn" id="song-auto">Let the app split them again</button></div>` : ''}
+        ${lay.map((sec, si) => `
+          <section class="se-sec">
+            <div class="se-head"><span class="sec-dot k-${Songs.sectionKind(sec.key)}"></span><strong>${esc(sec.label)}</strong>
+              <span class="muted small">${sec.slides.length} slide${sec.slides.length === 1 ? '' : 's'}</span></div>
+            <div class="se-row">${sec.slides.map((sl, j) => `
+              ${j > 0 ? `<button class="se-merge" data-merge="${si}:${j}" title="Join these two slides">Merge</button>` : ''}
+              <div class="se-slide ${st.position === 'lower' ? 'lower' : ''}" style="${cardStyle}">
+                <div class="se-text" style="${textStyle}">${sl.map((ln, k) => `
+                  ${k > 0 ? `<button class="se-split" data-split="${si}:${j}:${k}" aria-label="Start a new slide here"><span>Split here</span></button>` : ''}
+                  <span class="se-line" contenteditable="plaintext-only" spellcheck="true" data-line="${si}:${j}:${k}">${esc(ln)}</span>`).join('')}
+                </div>
+              </div>`).join('')}
+            </div>
+          </section>`).join('')}`;
+
+      const commit = (fn) => {
+        const fresh = Songs.layout(song, S());
+        fn(fresh);
+        song.lyrics = Songs.serialize(fresh);
+        song.slideMode = 'manual';
+        changed();
+        renderSlidesView();
+      };
+      view.onclick = (e) => {
+        const sp = e.target.closest('[data-split]');
+        if (sp) {
+          const [si, j, k] = sp.dataset.split.split(':').map(Number);
+          return commit((l) => { const sl = l[si].slides[j]; l[si].slides.splice(j, 1, sl.slice(0, k), sl.slice(k)); });
+        }
+        const mg = e.target.closest('[data-merge]');
+        if (mg) {
+          const [si, j] = mg.dataset.merge.split(':').map(Number);
+          return commit((l) => { const s = l[si].slides; s.splice(j - 1, 2, s[j - 1].concat(s[j])); });
+        }
+        if (e.target.id === 'song-auto') {
+          song.slideMode = 'auto'; changed(); renderSlidesView(); renderLook();
+        }
+      };
+      $$('.se-line', view).forEach((el) => {
+        const original = el.textContent;
+        el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } if (e.key === 'Escape') { el.textContent = original; el.blur(); } });
+        el.addEventListener('blur', () => {
+          const text = el.textContent.replace(/\s+/g, ' ').trim();
+          if (text === original) return;
+          const [si, j, k] = el.dataset.line.split(':').map(Number);
+          commit((l) => {
+            const sl = l[si].slides[j];
+            if (text) sl[k] = text; else sl.splice(k, 1);
+          });
+        });
+      });
     };
-    bindField('#song-title', 'title', true);
-    bindField('#song-author', 'author', true);
-    bindField('#song-copyright', 'copyright');
-    bindField('#song-ccli', 'ccli');
-    bindField('#song-lyrics', 'lyrics');
-    bindField('#song-arr', 'arrangement');
-    bgTiles($('#song-bg'), song.background || '', (id) => { song.background = id; changed(); }, { withDefault: true });
-    $('#song-parts').onclick = (e) => {
-      const b = e.target.closest('[data-key]');
-      if (!b) return;
-      song.arrangement = ((song.arrangement || '').trim() + ' ' + b.dataset.key).trim();
-      $('#song-arr').value = song.arrangement; changed();
+
+    // ----- Lyrics view -----
+    const renderLyricsView = () => {
+      view.innerHTML = `
+        <div class="form-grid">
+          <label>Author(s)<input id="song-author" value="${esc(song.author)}"></label>
+          <label>Copyright<input id="song-copyright" value="${esc(song.copyright)}"></label>
+          <label>CCLI Song #<input id="song-ccli" value="${esc(song.ccli)}"></label>
+        </div>
+        <div id="song-cleanup"></div>
+        <label class="block lyrics-block">
+          <span class="row" style="justify-content:space-between">Lyrics <button type="button" class="link-btn" id="song-tidy">Tidy up these lyrics</button></span>
+          <span class="hint">Paste from anywhere: chords, CCLI lines and notes are tidied up for you. Put <b>Verse 1</b>, <b>Chorus</b> or <b>Bridge</b> on its own line before each part. A blank line starts a new slide.</span>
+          <textarea id="song-lyrics" spellcheck="true" placeholder="Verse 1&#10;Jesus loves me, this I know&#10;For the Bible tells me so&#10;&#10;Chorus&#10;Yes, Jesus loves me…">${esc(song.lyrics)}</textarea>
+        </label>`;
+      const bindField = (sel, key, rerenderList) => {
+        $(sel).oninput = (e) => { song[key] = e.target.value; changed(); };
+        if (rerenderList) $(sel).onchange = renderList;
+      };
+      bindField('#song-author', 'author', true);
+      bindField('#song-copyright', 'copyright');
+      bindField('#song-ccli', 'ccli');
+      const ta = $('#song-lyrics');
+      ta.oninput = () => { song.lyrics = ta.value; changed(); renderOrder(); };
+      const showCleanup = (report, undo) => {
+        const what = Songs.describeCleanup(report);
+        const long = report.longLines.slice(0, 3);
+        if (!what && !long.length) { $('#song-cleanup').innerHTML = ''; return; }
+        $('#song-cleanup').innerHTML = `<div class="cleanup" role="status">${icon('check', 18)}
+          <div class="cleanup-text">${what ? `<strong>Tidied up the lyrics</strong><span>${esc(what)}</span>` : ''}
+          ${long.length ? `<span class="warn"><b>${report.longLines.length} line${report.longLines.length === 1 ? ' is' : 's are'}</b> too long for one line on the TV and will wrap: ${long.map((l) => '“' + esc(l) + '”').join(', ')}</span>` : ''}</div>
+          ${what && undo ? '<button class="link-btn" id="cleanup-undo">Undo</button>' : ''}</div>`;
+        if (what && undo) $('#cleanup-undo').onclick = () => { undo(); $('#song-cleanup').innerHTML = ''; };
+      };
+      ta.addEventListener('paste', (e) => {
+        const raw = e.clipboardData && e.clipboardData.getData('text/plain');
+        if (!raw) return;
+        const res = Songs.cleanLyrics(raw, Songs.effectiveStyle(song, S()));
+        if (!res.changed && !res.report.longLines.length) return;
+        e.preventDefault();
+        const before = ta.value, start = ta.selectionStart, end = ta.selectionEnd;
+        ta.value = before.slice(0, start) + res.text + before.slice(end);
+        ta.selectionStart = ta.selectionEnd = start + res.text.length;
+        song.lyrics = ta.value; changed(); renderOrder();
+        showCleanup(res.report, () => { ta.value = before.slice(0, start) + raw + before.slice(end); song.lyrics = ta.value; changed(); renderOrder(); });
+      });
+      $('#song-tidy').onclick = () => {
+        const before = song.lyrics;
+        const res = Songs.cleanLyrics(before, Songs.effectiveStyle(song, S()));
+        if (!res.changed && !res.report.longLines.length) { toast('These lyrics already look tidy.'); return; }
+        ta.value = song.lyrics = res.text; changed(); renderOrder();
+        showCleanup(res.report, () => { ta.value = song.lyrics = before; changed(); renderOrder(); });
+      };
     };
-    $('#song-arr-clear').onclick = () => { song.arrangement = ''; $('#song-arr').value = ''; changed(); };
+
+    const renderView = () => {
+      $$('.seg [data-view]').forEach((b) => { b.classList.toggle('on', b.dataset.view === B.songView); b.setAttribute('aria-selected', b.dataset.view === B.songView); });
+      if (B.songView === 'slides') renderSlidesView(); else renderLyricsView();
+    };
+    $('.song-editor .seg').onclick = (e) => {
+      const b = e.target.closest('[data-view]');
+      if (b && b.dataset.view !== B.songView) { B.songView = b.dataset.view; renderView(); }
+    };
+
+    // ----- Song order chips -----
+    const renderOrder = () => {
+      const sections = Songs.layout(song, S());
+      const keys = Songs.parseArrangement(song.arrangement, sections);
+      const byKey = Object.fromEntries(sections.map((s) => [s.key, s]));
+      const labels = keys.map((k) => byKey[k] && byKey[k].label).filter(Boolean);
+      const setOrder = (list) => { song.arrangement = list.join(', '); changed(); renderOrder(); };
+      const el = $('#song-order');
+      el.innerHTML = labels.map((l, i) => `<span class="o-chip k-${Songs.sectionKind(keys[i])}" draggable="true" data-index="${i}">
+          <span class="grip">${icon('grip', 12)}</span>${esc(l)}<button class="o-x" data-remove="${i}" aria-label="Remove ${esc(l)}">${icon('x', 12)}</button></span>`).join('')
+        || '<span class="muted small">Add lyrics to build the order.</span>';
+      const seen = new Set();
+      $('#song-order-add').innerHTML = sections.length ? '<span class="muted small">Add:</span>' + sections.filter((s) => !seen.has(s.label) && seen.add(s.label))
+        .map((s) => `<button class="o-add k-${Songs.sectionKind(s.key)}" data-add="${esc(s.label)}">+ ${esc(s.label)}</button>`).join('') +
+        (song.arrangement ? '<button class="link-btn small" id="order-reset">Use the order written</button>' : '') : '';
+      el.onclick = (e) => {
+        const x = e.target.closest('[data-remove]');
+        if (x) { const list = labels.slice(); list.splice(Number(x.dataset.remove), 1); setOrder(list); }
+      };
+      $('#song-order-add').onclick = (e) => {
+        const a = e.target.closest('[data-add]');
+        if (a) setOrder(labels.concat(a.dataset.add));
+        if (e.target.id === 'order-reset') { song.arrangement = ''; changed(); renderOrder(); }
+      };
+      if (!el._sortable) { el._sortable = true; sortable(el, (from, to) => { const list = Songs.parseArrangement(song.arrangement, Songs.layout(song, S())).map((k) => Songs.layout(song, S()).find((s) => s.key === k).label); move(list, from, to); setOrder(list); }); }
+    };
+
+    // ----- Look for this song -----
+    const renderLook = () => {
+      const st = Songs.effectiveStyle(song, S());
+      const useDef = Songs.usesDefaults(song);
+      const def = S();
+      const box = $('#song-look');
+      box.innerHTML = `
+        <h3>Look for this song</h3>
+        <label class="check defaults-box ${useDef ? 'on' : ''}"><input type="checkbox" id="look-default" ${useDef ? 'checked' : ''}> Use Settings defaults</label>
+        <p class="hint" style="margin:0">${useDef ? 'Change anything below to give this song its own look.' : 'This song has its own look. Tick the box to go back to the defaults.'}</p>
+        <div class="look-controls ${useDef ? 'dim' : ''}">
+          <div class="form-grid two">
+            <label>Lines per slide<select id="look-lines">${[1, 2, 3, 4, 5, 6, 8].map((n) => `<option value="${n}" ${n === Number(st.linesPerSlide) ? 'selected' : ''}>${n}${n === Number(def.linesPerSlide) ? ' (default)' : ''}</option>`).join('')}</select></label>
+            <label>Text position<select id="look-pos">${[['center', 'Centered'], ['lower', 'Lower third']].map(([v, n]) => `<option value="${v}" ${st.position === v ? 'selected' : ''}>${n}${v === (def.textPosition || 'center') ? ' (default)' : ''}</option>`).join('')}</select></label>
+          </div>
+          ${song.slideMode === 'manual' ? '<p class="hint" style="margin:-4px 0 0">Lines per slide only applies when the app splits the slides. This song’s breaks are set by hand.</p>' : ''}
+          <div class="block-label">Text size
+            <div class="seg full" id="look-size">${['smaller', 'normal', 'larger'].map((v) => `<button data-size="${v}" class="${st.size === v ? 'on' : ''}">${v[0].toUpperCase() + v.slice(1)}</button>`).join('')}</div>
+          </div>
+          <label class="check"><input type="checkbox" id="look-caps" ${st.uppercase ? 'checked' : ''}> ALL CAPITALS</label>
+          <div class="block-label">Background<div class="bg-tiles small" id="song-bg"></div></div>
+        </div>`;
+      const own = (key, val) => {
+        song.style = Object.assign({}, song.style || {}, { [key]: val });
+        changed(); renderLook(); if (B.songView === 'slides') renderSlidesView(); renderOrder();
+      };
+      $('#look-default').onchange = (e) => {
+        if (e.target.checked) { song.style = null; song.background = ''; }
+        else song.style = { linesPerSlide: Number(def.linesPerSlide) || 4, size: 'normal', position: def.textPosition || 'center', uppercase: !!def.uppercase };
+        changed(); renderLook(); if (B.songView === 'slides') renderSlidesView(); renderOrder();
+      };
+      $('#look-lines').onchange = (e) => own('linesPerSlide', Number(e.target.value));
+      $('#look-pos').onchange = (e) => own('position', e.target.value);
+      $('#look-caps').onchange = (e) => own('uppercase', e.target.checked);
+      $('#look-size').onclick = (e) => { const b = e.target.closest('[data-size]'); if (b) own('size', b.dataset.size); };
+      bgTiles($('#song-bg'), song.background || '', (id) => {
+        song.background = id; changed(); renderLook(); if (B.songView === 'slides') renderSlidesView();
+      }, { withDefault: true });
+    };
+
+    $('#song-title').oninput = (e) => { song.title = e.target.value || 'Untitled song'; changed(); };
+    $('#song-title').onchange = renderList;
     $('#song-del').onclick = async () => { if (await deleteThing('song', song.id)) { B.song = null; renderBuild(); } };
     if (song.pco) $('#song-pco-update').onclick = async () => {
+      if (song.slideMode === 'manual' && !confirm('This song’s slides were arranged by hand. Updating replaces the lyrics with the ones from Planning Center, so your slide changes will be lost. Its look and background stay.\n\nUpdate anyway?')) return;
       busy('Getting the latest from Planning Center…');
       try {
         const arrs = await PCO.arrangements(song.pco.songId);
@@ -836,12 +1006,17 @@
         busy(); renderBuild(); toast('Updated from Planning Center.');
       } catch (e) { busy(); toast(e.message, 'error'); }
     };
+
+    renderView();
+    renderOrder();
+    renderLook();
   }
 
   // ---------- Planning Center import ----------
   /** Add (or refresh) a song from Planning Center. Keeps the background if it already exists. */
   function saveFromPco(pcoSong, arr) {
     const data = PCO.toSong(pcoSong, arr);
+    data.slideMode = 'auto'; // fresh lyrics: let the app split them
     let song = D().songs.find((s) => s.pco && s.pco.songId === pcoSong.id);
     if (song) Object.assign(song, data);
     else {
@@ -1197,6 +1372,7 @@
         <label>Biggest text size <span class="muted" id="set-size-val">${s.maxFontSize}</span><input type="range" id="set-size" min="50" max="160" value="${s.maxFontSize}"></label>
         <label>Lines per slide<select id="set-lines">${[1, 2, 3, 4, 5, 6, 8].map((n) => `<option ${n === Number(s.linesPerSlide) ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
         <label>Fade time (seconds)<input type="number" id="set-fade" min="0" max="3" step="0.1" value="${s.transitionSeconds}"></label>
+        <label>Text position<select id="set-pos">${[['center', 'Centered'], ['lower', 'Lower third']].map(([v, n]) => `<option value="${v}" ${(s.textPosition || 'center') === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
         <label>Default background<select id="set-bg">${bgOptions(s.defaultBackground || 'none', { allowDefault: false })}</select></label>
         <label class="check"><input type="checkbox" id="set-upper" ${s.uppercase ? 'checked' : ''}> ALL CAPITALS</label>
         <label class="check"><input type="checkbox" id="set-shadow" ${s.shadow ? 'checked' : ''}> Text shadow (easier to read)</label>
@@ -1205,7 +1381,7 @@
     const sample = new Renderer($('#set-sample'), { staticOnly: true });
     const drawSample = async () => {
       sample.setBackground(await resolveBg(s.defaultBackground));
-      sample.setText('Jesus loves me, this I know\nFor the Bible tells me so\nLittle ones to Him belong\nThey are weak but He is strong', s);
+      sample.setText('Jesus loves me, this I know\nFor the Bible tells me so\nLittle ones to Him belong\nThey are weak but He is strong', Songs.effectiveStyle({}, s));
     };
     drawSample();
     const upd = (key, val) => { s[key] = val; Store.save(); invalidateSlides(); drawSample(); Output.refreshStyle(); };
@@ -1217,6 +1393,7 @@
     $('#set-shadow').onchange = (e) => upd('shadow', e.target.checked);
     $('#set-fade').onchange = (e) => upd('transitionSeconds', Math.max(0, Math.min(3, Number(e.target.value) || 0)));
     $('#set-bg').onchange = (e) => upd('defaultBackground', e.target.value === 'none' ? null : e.target.value);
+    $('#set-pos').onchange = (e) => upd('textPosition', e.target.value);
   }
 
   function setTv(el, s) {
