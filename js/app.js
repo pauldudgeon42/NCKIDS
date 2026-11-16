@@ -7,7 +7,7 @@
  * Data lives in Store.data (see store.js). Call Store.save() after changing it.
  */
 (function () {
-  const APP_VERSION = '0.3.0';
+  const APP_VERSION = '0.4.0';
 
   // ---------- small helpers ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -17,7 +17,27 @@
   const S = () => Store.data.settings;
   const byId = (collection, id) => D()[collection].find((x) => x.id === id) || null;
   const COLLECTION = { song: 'songs', lesson: 'lessons', video: 'videos', background: 'backgrounds' };
-  const ICON = { song: '♪', lesson: '▦', video: '▶', background: '✦' };
+  // Simple line icons (no emoji). icon('song') returns an inline SVG.
+  const ICONS = {
+    song: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
+    lesson: '<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/>',
+    video: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/>',
+    background: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+    tv: '<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8"/>',
+    check: '<path d="M5 12l5 5L20 7"/>',
+    x: '<path d="M6 6l12 12M18 6L6 18"/>',
+    grip: '<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" stroke-width="3"/>',
+    up: '<path d="M6 15l6-6 6 6"/>',
+    down: '<path d="M6 9l6 6 6-6"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    play: '<path d="M7 5l12 7-12 7z"/>',
+    download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+    refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+  };
+  function icon(name, size = 16) {
+    return `<svg class="i" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+  }
   const TYPE_NAME = { song: 'Song', lesson: 'Lesson', video: 'Video', background: 'Background' };
 
   function fmtTime(sec) {
@@ -194,10 +214,14 @@
   // =====================================================================
   //  PRESENT MODE
   // =====================================================================
+  // The middle column shows EVERY item in the playlist, one after another, so the
+  // operator can scroll through the whole service. Clicking an item on the left
+  // jumps to it (and "cues" it, so Next starts there).
   const P = {
     playlistId: null,
-    selected: 0,       // item shown in the slide grid
+    cued: null,        // item clicked on the left; Next starts it if it isn't live
     live: null,        // { item, slide } currently on the TV
+    last: null,        // the last thing that was live (after Clear or a finished video), so Next carries on from there
     cache: new Map(),  // item.id -> slides
     liveBgId: null,    // background picked from the bank while presenting (null = none picked)
     liveBgItem: -1,    // which playlist item was live when it was picked
@@ -231,7 +255,7 @@
   }
   async function pickLiveBg(id) {
     P.liveBgId = id;
-    P.liveBgItem = P.live ? P.live.item : P.selected;
+    P.liveBgItem = P.live ? P.live.item : (P.cued === null ? -1 : P.cued);
     Output.setBackground(await resolveBg(id));
     markBank();
     renderPresentSlides();
@@ -260,7 +284,7 @@
     const lists = sortedPlaylists();
     if (!P.playlistId || !byId('playlists', P.playlistId)) P.playlistId = S().lastPlaylist && byId('playlists', S().lastPlaylist) ? S().lastPlaylist : (lists[0] && lists[0].id);
     sel.innerHTML = lists.length
-      ? lists.map((p) => `<option value="${p.id}" ${p.id === P.playlistId ? 'selected' : ''}>${esc(p.title)}${p.date ? ' — ' + esc(prettyDate(p.date)) : ''}</option>`).join('')
+      ? lists.map((p) => `<option value="${p.id}" ${p.id === P.playlistId ? 'selected' : ''}>${esc(p.title)}</option>`).join('')
       : '<option>No playlists yet</option>';
     $('#present-empty').classList.toggle('hidden', lists.length > 0);
     renderPresentItems();
@@ -268,50 +292,105 @@
     renderBank();
   }
 
+  /** done / now / next, from what is live on the TV */
+  function itemState(i) {
+    const cur = P.live || P.last;
+    if (!cur) return i === 0 ? 'next' : '';
+    if (i < cur.item) return 'done';
+    if (i === cur.item) return P.live ? 'now' : 'done';
+    if (i === cur.item + 1) return 'next';
+    return '';
+  }
+
   function renderPresentItems() {
     const pl = currentPlaylist();
     const ol = $('#present-items');
+    $('#present-date').textContent = pl && pl.date ? prettyDate(pl.date) : '';
     if (!pl) { ol.innerHTML = ''; return; }
-    if (P.selected >= pl.items.length) P.selected = 0;
-    ol.innerHTML = pl.items.map((it, i) => `
-      <li class="p-item ${i === P.selected ? 'selected' : ''} ${P.live && P.live.item === i ? 'live' : ''}" data-i="${i}">
-        <span class="icon t-${it.type}">${ICON[it.type]}</span>
-        <span class="name">${esc(itemTitle(it))}</span>
-        <span class="type">${TYPE_NAME[it.type]}</span>
-      </li>`).join('') || '<li class="muted pad">This playlist is empty. Add things to it in Build → Playlists.</li>';
+    ol.innerHTML = pl.items.map((it, i) => {
+      const st = itemState(i);
+      const sub = TYPE_NAME[it.type] + (st === 'now' ? ' · on the TV now' : st === 'next' ? ' · up next' : '');
+      return `<li class="p-item ${st} ${P.cued === i ? 'cued' : ''}" data-i="${i}">
+        <span class="badge-n">${st === 'done' ? icon('check', 15) : i + 1}</span>
+        <span class="txt"><span class="name">${esc(itemTitle(it))}</span><span class="sub">${sub}</span></span>
+      </li>`;
+    }).join('') || '<li class="muted pad">This playlist is empty. Add things to it in Build → Playlists.</li>';
   }
 
   let slidesRenderToken = 0;
+  let thumbObserver = null;
+  /** Every item's slides, top to bottom. Thumbnails are drawn as they scroll into view. */
   async function renderPresentSlides() {
     const token = ++slidesRenderToken;
     const pl = currentPlaylist();
-    const grid = $('#present-slides');
-    const title = $('#present-title');
-    grid.innerHTML = '';
-    if (!pl || !pl.items.length) { title.textContent = ''; return; }
-    const item = pl.items[P.selected];
-    title.innerHTML = `<span class="icon t-${item.type}">${ICON[item.type]}</span> ${esc(itemTitle(item))}`;
-    const slides = await itemSlides(item);
+    const wrap = $('#present-slides');
+    if (!pl || !pl.items.length) {
+      wrap.innerHTML = pl ? '<p class="muted pad">This playlist is empty. Add songs, lessons and videos in Build → Playlists.</p>' : '';
+      return;
+    }
+    const all = [];
+    for (let i = 0; i < pl.items.length; i++) {
+      const slides = await itemSlides(pl.items[i]);
+      const bgs = [];
+      for (const s of slides) bgs.push(await effectiveBg(s, i));
+      all.push({ slides, bgs });
+    }
     if (token !== slidesRenderToken) return;
-    if (!slides.length) { grid.innerHTML = '<p class="muted pad">No slides. (Songs need lyrics; lessons need slide images.)</p>'; return; }
-    const bgs = [];
-    for (const s of slides) bgs.push(await effectiveBg(s, P.selected));
-    if (token !== slidesRenderToken) return;
-    slides.forEach((s, i) => {
-      const card = slideCard(s, i);
-      if (P.live && P.live.item === P.selected && P.live.slide === i) card.classList.add('live');
-      grid.appendChild(card);
-      drawThumb(card.querySelector('.thumb'), s, bgs[i]);
+    const keepScroll = wrap.scrollTop;
+    if (thumbObserver) thumbObserver.disconnect();
+    const pending = new Map();
+    thumbObserver = new IntersectionObserver((entries) => {
+      for (const en of entries) {
+        if (!en.isIntersecting) continue;
+        const draw = pending.get(en.target);
+        if (draw) { draw(); pending.delete(en.target); }
+        thumbObserver.unobserve(en.target);
+      }
+    }, { root: wrap, rootMargin: '600px 0px' });
+    wrap.innerHTML = '';
+    pl.items.forEach((it, i) => {
+      const { slides, bgs } = all[i];
+      const sec = document.createElement('section');
+      sec.className = 'p-section';
+      sec.id = 'sec-' + i;
+      sec.innerHTML = `<div class="p-sec-head"><span class="num">${i + 1}</span><h2>${esc(itemTitle(it))}</h2>
+        <span class="type-pill t-${it.type}">${icon(it.type, 14)} ${TYPE_NAME[it.type]}</span>
+        <span class="count">${slides.length} slide${slides.length === 1 ? '' : 's'}</span></div>
+        <div class="slide-grid"></div>`;
+      const grid = sec.querySelector('.slide-grid');
+      if (!slides.length) grid.innerHTML = '<p class="muted">No slides. Songs need lyrics, and lessons need slide pictures.</p>';
+      slides.forEach((s, j) => {
+        const card = slideCard(s, j);
+        card.dataset.item = i;
+        if (P.live && P.live.item === i && P.live.slide === j) card.classList.add('live');
+        grid.appendChild(card);
+        const th = card.querySelector('.thumb');
+        pending.set(th, () => drawThumb(th, s, bgs[j]));
+        thumbObserver.observe(th);
+      });
+      wrap.appendChild(sec);
     });
-    const liveCard = grid.querySelector('.live');
-    if (liveCard) liveCard.scrollIntoView({ block: 'nearest' });
+    wrap.style.scrollBehavior = 'auto';
+    wrap.scrollTop = keepScroll;
+    wrap.style.scrollBehavior = '';
+  }
+
+  function scrollToItem(i) {
+    const sec = $('#sec-' + i);
+    if (sec) sec.scrollIntoView({ block: 'start', behavior: 'smooth' });
   }
 
   function markLive() {
-    $$('#present-items .p-item').forEach((li) => li.classList.toggle('live', !!P.live && Number(li.dataset.i) === P.live.item));
-    $$('#present-slides .slide-card').forEach((c) => c.classList.toggle('live', !!P.live && P.live.item === P.selected && Number(c.dataset.slide) === P.live.slide));
-    const lc = $('#present-slides .slide-card.live');
-    if (lc) lc.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    $$('#present-slides .slide-card').forEach((c) => c.classList.toggle('live',
+      !!P.live && Number(c.dataset.item) === P.live.item && Number(c.dataset.slide) === P.live.slide));
+    renderPresentItems();
+    if (!P.live) return;
+    // Keep what's live in view: a new item scrolls to its heading, later slides just stay visible.
+    if (P.live.slide === 0) scrollToItem(P.live.item);
+    else {
+      const lc = $('#present-slides .slide-card.live');
+      if (lc) lc.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
   }
 
   async function goLive(itemIndex, slideIndex) {
@@ -323,30 +402,42 @@
     const slide = slides[slideIndex];
     if (!slide) return;
     P.live = { item: itemIndex, slide: slideIndex, kind: slide.kind };
+    P.last = null;
+    P.cued = null;
     const bg = await effectiveBg(slide, itemIndex);
     Output.show(bg === slide.bg ? slide : Object.assign({}, slide, { bg }));
     markBank();
     $('#video-controls').classList.toggle('hidden', slide.kind !== 'video');
     updateLiveButtons();
-    if (P.selected !== itemIndex) { P.selected = itemIndex; renderPresentItems(); await renderPresentSlides(); }
     markLive();
+  }
+
+  async function firstWithSlides(from, dir) {
+    const pl = currentPlaylist();
+    for (let i = from; i >= 0 && i < pl.items.length; i += dir) {
+      const s = await itemSlides(pl.items[i]);
+      if (s.length) return { i, count: s.length };
+    }
+    return null;
   }
 
   async function step(dir) {
     const pl = currentPlaylist();
     if (!pl || !pl.items.length) return;
-    if (!P.live) { await goLive(P.selected, 0); return; }
-    // If the operator is looking at a different item than the live one, "next" starts that item.
-    if (dir > 0 && P.selected !== P.live.item) { await goLive(P.selected, 0); return; }
-    let { item, slide } = P.live;
+    // Nothing live yet, or an item was clicked on the left: Next starts that item.
+    const cur = P.live || P.last;
+    if (dir > 0 && (!cur || (P.cued !== null && P.cued !== cur.item))) {
+      const f = await firstWithSlides(P.cued === null ? 0 : P.cued, 1);
+      if (f) await goLive(f.i, 0);
+      return;
+    }
+    if (!cur) return;
+    const { item, slide } = cur;
     const slides = await itemSlides(pl.items[item]);
     if (dir > 0 && slide + 1 < slides.length) return goLive(item, slide + 1);
     if (dir < 0 && slide > 0) return goLive(item, slide - 1);
-    // move to the next/previous item that has slides
-    for (let i = item + dir; i >= 0 && i < pl.items.length; i += dir) {
-      const s = await itemSlides(pl.items[i]);
-      if (s.length) return goLive(i, dir > 0 ? 0 : s.length - 1);
-    }
+    const f = await firstWithSlides(item + dir, dir);
+    if (f) return goLive(f.i, dir > 0 ? 0 : f.count - 1);
   }
 
   function updateLiveButtons() {
@@ -356,6 +447,7 @@
 
   function clearLive() {
     Output.clear();
+    if (P.live) P.last = P.live;
     P.live = null;
     $('#video-controls').classList.add('hidden');
     markLive();
@@ -383,15 +475,18 @@
 
   function bindPresent() {
     $('#present-playlist').addEventListener('change', (e) => {
-      P.playlistId = e.target.value; P.selected = 0;
+      P.playlistId = e.target.value; P.cued = null; P.live = null; P.last = null;
       S().lastPlaylist = P.playlistId; Store.save();
+      $('#present-slides').scrollTop = 0;
       renderPresentItems(); renderPresentSlides();
     });
     $('#present-items').addEventListener('click', (e) => {
       const li = e.target.closest('.p-item');
       if (!li) return;
-      P.selected = Number(li.dataset.i);
-      renderPresentItems(); renderPresentSlides();
+      const i = Number(li.dataset.i);
+      P.cued = P.live && P.live.item === i ? null : i;
+      renderPresentItems();
+      scrollToItem(i);
     });
     $('#present-items').addEventListener('dblclick', (e) => {
       const li = e.target.closest('.p-item');
@@ -399,7 +494,7 @@
     });
     $('#present-slides').addEventListener('click', (e) => {
       const card = e.target.closest('.slide-card');
-      if (card) goLive(P.selected, Number(card.dataset.slide));
+      if (card) goLive(Number(card.dataset.item), Number(card.dataset.slide));
     });
     $('#btn-black').addEventListener('click', () => { Output.toggleBlack(); updateLiveButtons(); });
     $('#btn-clear').addEventListener('click', clearLive);
@@ -422,9 +517,10 @@
     Output.onVideoTime = (cur, dur, paused) => {
       $('#vc-time').textContent = `${fmtTime(cur)} / ${fmtTime(dur)}  ·  ${fmtTime(dur - cur)} left`;
       $('#vc-bar').style.width = dur ? (100 * cur / dur) + '%' : '0';
-      $('#vc-play').textContent = paused ? '▶ Play' : '❚❚ Pause';
+      $('#vc-play').textContent = paused ? 'Play' : 'Pause';
     };
     Output.onVideoEnded = () => {
+      if (P.live) P.last = P.live;
       P.live = null;
       $('#video-controls').classList.add('hidden');
       markLive();
@@ -438,7 +534,7 @@
   //  BUILD MODE
   // =====================================================================
   let buildTab = 'playlists';
-  const B = { playlist: null, song: null, lesson: null, search: '', pickerFilter: 'all' };
+  const B = { playlist: null, song: null, lesson: null, search: '', pickerFilter: 'all', setSection: 'appearance' };
 
   function sortedPlaylists() {
     return D().playlists.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.title.localeCompare(b.title));
@@ -498,37 +594,37 @@
     if (!B.playlist || !byId('playlists', B.playlist)) B.playlist = lists[0] ? lists[0].id : null;
     const pl = byId('playlists', B.playlist);
     body.innerHTML = `
-      <section class="col col-list">
+      <section class="col card col-list">
         <div class="col-head"><h2>Playlists</h2><button class="btn primary" id="pl-new">+ New</button></div>
         <ul class="list" id="pl-list">${lists.map((p) => `
           <li class="${p.id === B.playlist ? 'selected' : ''}" data-id="${p.id}">
             <strong>${esc(p.title)}</strong><small>${esc(prettyDate(p.date))} · ${p.items.length} item${p.items.length === 1 ? '' : 's'}</small>
           </li>`).join('') || '<li class="muted">No playlists yet. Click “+ New”.</li>'}</ul>
       </section>
-      <section class="col col-main">
+      <section class="col card col-main">
         ${pl ? `
         <div class="col-head">
           <input class="title-input" id="pl-title" value="${esc(pl.title)}" aria-label="Playlist name">
           <input type="date" id="pl-date" value="${esc(pl.date || '')}">
         </div>
         <div class="row gap">
-          <button class="btn primary" id="pl-present">▶ Present this playlist</button>
+          <button class="btn primary" id="pl-present">${icon('play', 14)} Present this playlist</button>
           <button class="btn" id="pl-dup">Duplicate</button>
           <button class="btn danger" id="pl-del">Delete</button>
         </div>
         <p class="hint">Drag items to reorder. Add things from the list on the right.</p>
         <ol class="pl-items" id="pl-items">${pl.items.map((it, i) => `
           <li draggable="true" data-index="${i}">
-            <span class="grip">⋮⋮</span>
-            <span class="icon t-${it.type}">${ICON[it.type]}</span>
+            <span class="grip">${icon('grip', 18)}</span>
+            <span class="icon t-${it.type}">${icon(it.type)}</span>
             <span class="name">${esc(itemTitle(it))}<small>${TYPE_NAME[it.type]}</small></span>
             ${it.type === 'song' ? `<label class="bg-pick">Background <select data-bg="${i}">${bgOptions(it.background || '', { defaultLabel: 'Song’s own' })}</select></label>` : ''}
-            <button class="icon-btn" data-up="${i}" title="Move up">↑</button>
-            <button class="icon-btn" data-down="${i}" title="Move down">↓</button>
-            <button class="icon-btn danger" data-remove="${i}" title="Remove from playlist">✕</button>
+            <button class="icon-btn" data-up="${i}" title="Move up" aria-label="Move up">${icon('up')}</button>
+            <button class="icon-btn" data-down="${i}" title="Move down" aria-label="Move down">${icon('down')}</button>
+            <button class="icon-btn danger" data-remove="${i}" title="Remove from playlist" aria-label="Remove from playlist">${icon('x')}</button>
           </li>`).join('') || '<li class="empty-drop">Empty. Drag songs, lessons, videos or backgrounds here →</li>'}</ol>` : '<p class="muted pad">Create a playlist for each Sunday or lesson.</p>'}
       </section>
-      <section class="col col-picker">
+      <section class="col card col-picker">
         <div class="col-head"><h2>Add to playlist</h2></div>
         <input type="search" id="pick-search" placeholder="Search everything…" value="${esc(B.search)}">
         <div class="chips" id="pick-filter">${['all', 'song', 'lesson', 'video', 'background'].map((f) =>
@@ -544,8 +640,8 @@
         for (const x of sortedBy(D()[COLLECTION[type]])) {
           if (q && !(x.title.toLowerCase().includes(q) || (type === 'song' && (x.lyrics || '').toLowerCase().includes(q)))) continue;
           rows.push(`<li draggable="true" data-type="${type}" data-ref="${x.id}">
-            <span class="icon t-${type}">${ICON[type]}</span><span class="name">${esc(x.title)}<small>${TYPE_NAME[type]}</small></span>
-            <button class="icon-btn add" data-add title="Add to playlist" ${pl ? '' : 'disabled'}>+</button></li>`);
+            <span class="icon t-${type}">${icon(type)}</span><span class="name">${esc(x.title)}<small>${TYPE_NAME[type]}</small></span>
+            <button class="icon-btn add" data-add title="Add to playlist" aria-label="Add to playlist" ${pl ? '' : 'disabled'}>${icon('plus', 18)}</button></li>`);
         }
       }
       $('#pick-list').innerHTML = rows.join('') || '<li class="muted">Nothing found. Add songs, lessons, videos and backgrounds in their tabs.</li>';
@@ -589,7 +685,7 @@
     });
     sortable(itemsEl, (from, to) => { move(pl.items, from, to); Store.save(); invalidateSlides(); renderBuild(); });
     itemsEl.onclick = (e) => {
-      const t = e.target;
+      const t = e.target.closest('button') || e.target;
       if (t.dataset.remove !== undefined) { pl.items.splice(Number(t.dataset.remove), 1); }
       else if (t.dataset.up !== undefined) { const i = Number(t.dataset.up); if (i > 0) move(pl.items, i, i - 1); }
       else if (t.dataset.down !== undefined) { const i = Number(t.dataset.down); if (i < pl.items.length - 1) move(pl.items, i, i + 1); }
@@ -602,7 +698,7 @@
     $('#pl-title').oninput = (e) => { pl.title = e.target.value || 'Untitled playlist'; Store.save(); };
     $('#pl-title').onchange = () => renderBuild();
     $('#pl-date').onchange = (e) => { pl.date = e.target.value; Store.save(); renderBuild(); };
-    $('#pl-present').onclick = () => { P.playlistId = pl.id; P.selected = 0; S().lastPlaylist = pl.id; Store.save(); setMode('present'); };
+    $('#pl-present').onclick = () => { P.playlistId = pl.id; P.cued = null; P.live = null; P.last = null; S().lastPlaylist = pl.id; Store.save(); setMode('present'); };
     $('#pl-dup').onclick = () => {
       const copy = { id: Media.id(), title: pl.title + ' (copy)', date: nextSunday(), items: pl.items.map((it) => Object.assign({}, it, { id: Media.id() })) };
       D().playlists.push(copy); B.playlist = copy.id; Store.save(); renderBuild();
@@ -626,21 +722,20 @@
     if (!B.song && songs[0]) B.song = songs[0].id;
     const song = byId('songs', B.song);
     body.innerHTML = `
-      <section class="col col-list">
-        <div class="col-head"><h2>Songs</h2></div>
-        <div class="row gap wrap">
-          <button class="btn primary" id="song-new">+ New song</button>
-          <button class="btn" id="song-import" title="Lyrics files downloaded from CCLI SongSelect (.txt)">Import .txt</button>
-          <button class="btn pco-btn" id="song-pco" title="Bring in songs and their SongSelect lyrics from Planning Center">⬇ From Planning Center</button>
+      <section class="col card col-list">
+        <div class="col-head"><h2>Songs</h2><button class="btn primary small" id="song-new">${icon('plus', 14)} New song</button></div>
+        <div class="row gap">
+          <button class="btn small" style="flex:1" id="song-import" title="Lyrics files downloaded from CCLI SongSelect (.txt)">Import .txt</button>
+          <button class="btn small" style="flex:1" id="song-pco" title="Bring in songs and their SongSelect lyrics from Planning Center">${icon('download', 14)} Planning Center</button>
         </div>
-        <input type="search" id="song-search" placeholder="Search titles and lyrics…">
+        <label class="search-field">${icon('search')}<input type="search" id="song-search" placeholder="Search titles and lyrics" aria-label="Search songs"></label>
         <ul class="list" id="song-list"></ul>
       </section>
-      <section class="col col-main song-editor">
+      <section class="col card col-main song-editor">
         ${song ? `
-        <div class="col-head"><input class="title-input" id="song-title" value="${esc(song.title)}" aria-label="Song title"></div>
-        ${song.pco ? `<div class="pco-note">From Planning Center${song.pco.arrangementName ? ' · arrangement “' + esc(song.pco.arrangementName) + '”' : ''}
-          <button class="btn small" id="song-pco-update" title="Replace the lyrics and order with the latest from Planning Center. The background stays.">↻ Update from Planning Center</button></div>` : ''}
+        <div class="col-head"><input class="title-input" id="song-title" value="${esc(song.title)}" aria-label="Song title">
+          ${song.pco ? `<span class="pco-tag" title="${song.pco.arrangementName ? 'Arrangement: ' + esc(song.pco.arrangementName) : ''}">From Planning Center</span>
+          <button class="btn small" id="song-pco-update" title="Replace the lyrics and order with the latest from Planning Center. The background stays.">${icon('refresh', 14)} Update</button>` : ''}</div>
         <div class="form-grid">
           <label>Author(s)<input id="song-author" value="${esc(song.author)}"></label>
           <label>Copyright<input id="song-copyright" value="${esc(song.copyright)}"></label>
@@ -823,7 +918,7 @@
           <p class="small"><b>Order:</b> ${pick.sequence.length ? esc(pick.sequence.join(' → ')) : '<span class="muted">as written</span>'}</p>
           <p class="small muted">${sections.length} part${sections.length === 1 ? '' : 's'} found: ${esc(sections.map((x) => x.label).join(', '))}</p>
           <pre class="lyrics-preview">${esc(pick.lyrics)}</pre>
-          <button class="btn primary" id="pco-import-one">${existing ? '↻ Update the song in the library' : '⬇ Import this song'}</button>`;
+          <button class="btn primary" id="pco-import-one">${existing ? 'Update the song in the library' : 'Import this song'}</button>`;
         const sel = $('#pco-arr');
         if (sel) sel.onchange = () => { pick = withLyrics.find((a) => a.id === sel.value); draw(); };
         $('#pco-import-one').onclick = () => {
@@ -883,7 +978,7 @@
     if (!B.lesson && lessons[0]) B.lesson = lessons[0].id;
     const lesson = byId('lessons', B.lesson);
     body.innerHTML = `
-      <section class="col col-list">
+      <section class="col card col-list">
         <div class="col-head"><h2>Lessons</h2></div>
         <p class="hint">A lesson is a set of slide pictures (the JPEGs in your curriculum download).</p>
         <div class="row gap wrap">
@@ -892,7 +987,7 @@
         </div>
         <ul class="list" id="lesson-list">${lessons.map((l) => `<li class="${l.id === B.lesson ? 'selected' : ''}" data-id="${l.id}"><strong>${esc(l.title)}</strong><small>${l.slides.length} slides</small></li>`).join('') || '<li class="muted">No lessons yet.</li>'}</ul>
       </section>
-      <section class="col col-wide" id="lesson-main">
+      <section class="col card col-wide" id="lesson-main">
         ${lesson ? `
         <div class="col-head"><input class="title-input" id="lesson-title" value="${esc(lesson.title)}" aria-label="Lesson name"></div>
         <div class="row gap">
@@ -902,7 +997,7 @@
         <p class="hint">Drag slides to reorder. You can also drop pictures from Finder onto this area.</p>
         <div class="slide-grid editable" id="lesson-slides">${lesson.slides.map((s, i) => `
           <div class="slide-card" draggable="true" data-index="${i}"><div class="thumb"><img loading="lazy" data-path="${esc(s.path)}"></div>
-          <div class="cap"><span class="num">${i + 1}</span>${esc(s.name || '')}<button class="icon-btn danger" data-del="${i}" title="Remove slide">✕</button></div></div>`).join('')}</div>` :
+          <div class="cap"><span class="num">${i + 1}</span>${esc(s.name || '')}<button class="icon-btn danger" data-del="${i}" title="Remove slide" aria-label="Remove slide">${icon('x')}</button></div></div>`).join('')}</div>` :
         '<p class="muted pad">Import a lesson’s slide pictures to get started. Tip: choose “From a folder” and pick the lesson’s JPEG folder from the curriculum download.</p>'}
       </section>`;
 
@@ -953,7 +1048,7 @@
     const grid = $('#lesson-slides');
     sortable(grid, (from, to) => { move(lesson.slides, from, to); lesson.thumb = lesson.slides[0] && lesson.slides[0].path; Store.save(); invalidateSlides(); renderBuild(); });
     grid.onclick = async (e) => {
-      const d = e.target.dataset.del;
+      const d = (e.target.closest('[data-del]') || {}).dataset?.del;
       if (d === undefined) return;
       const [removed] = lesson.slides.splice(Number(d), 1);
       await Store.remove(removed.path);
@@ -967,7 +1062,7 @@
     const coll = COLLECTION[type];
     const items = sortedBy(D()[coll]);
     body.innerHTML = `
-      <section class="col col-full" id="media-main">
+      <section class="col card col-full" id="media-main">
         <div class="col-head"><h2>${title}</h2>
           <div class="row gap"><input type="search" id="media-search" placeholder="Search…"><button class="btn primary" id="media-import">${importLabel}</button><button class="btn" id="media-import-folder">+ From a folder…</button></div>
         </div>
@@ -982,7 +1077,7 @@
           <div class="media-thumb"><img data-path="${esc(x.thumb || '')}" alt=""><span class="badge">${x.type === 'image' ? 'Still' : (x.duration ? fmtTime(x.duration) : 'Motion')}</span>
             ${type === 'background' && S().defaultBackground === x.id ? '<span class="badge default">Default</span>' : ''}</div>
           <input class="media-title" value="${esc(x.title)}" data-title="${x.id}">
-          <div class="row gap">${extraButtons ? extraButtons(x) : ''}<button class="icon-btn danger" data-del="${x.id}" title="Delete">✕</button></div>
+          <div class="row gap">${extraButtons ? extraButtons(x) : ''}<button class="icon-btn danger" data-del="${x.id}" title="Delete" aria-label="Delete">${icon('x')}</button></div>
         </div>`).join('') || '<p class="muted pad">Nothing here yet. Use the import button, or drag files from Finder onto this page.</p>';
       $$('img[data-path]', grid).forEach(async (img) => { if (img.dataset.path) img.src = await Store.url(img.dataset.path); });
     };
@@ -1007,7 +1102,7 @@
       if (id) { byId(coll, id).title = e.target.value || 'Untitled'; Store.save(); }
     });
     grid.addEventListener('click', async (e) => {
-      const del = e.target.dataset.del;
+      const del = (e.target.closest('[data-del]') || {}).dataset?.del;
       if (del) { if (await deleteThing(type, del)) renderBuild(); return; }
       const card = e.target.closest('.media-card');
       if (e.target.closest('.media-thumb') && card) previewMedia(byId(coll, card.dataset.id), type);
@@ -1039,67 +1134,74 @@
       type: 'background', title: 'Backgrounds', importLabel: '+ Import backgrounds…', accept: 'video/*,image/*,.mp4,.mov,.m4v',
       hint: 'Motion loops (or still pictures) shown behind song lyrics. The default background is used for any song that doesn’t pick its own.',
       importer: (files, p) => Media.importBackgrounds(files, p),
-      extraButtons: (x) => S().defaultBackground === x.id ? '<span class="muted small">Default ✓</span>' : `<button class="btn small" data-default="${x.id}">Make default</button>`,
+      extraButtons: (x) => S().defaultBackground === x.id ? '<span class="muted small">Default</span>' : `<button class="btn small" data-default="${x.id}">Make default</button>`,
     });
   }
 
   // ---------- Settings ----------
   const FONTS = ['Avenir Next', 'Helvetica Neue', 'Arial Rounded MT Bold', 'Futura', 'Gill Sans', 'Verdana', 'Chalkboard SE', 'Marker Felt', 'Noteworthy', 'Georgia'];
+  const SET_SECTIONS = [
+    ['appearance', 'Appearance'], ['lyrics', 'Lyrics on the TV'], ['tv', 'TV and sound'], ['logo', 'Logo'],
+    ['ccli', 'CCLI'], ['pco', 'Planning Center'], ['library', 'Library folder'],
+  ];
+
   function buildSettings(body) {
-    const s = S();
+    if (!SET_SECTIONS.some(([k]) => k === B.setSection)) B.setSection = 'appearance';
     body.innerHTML = `
-      <section class="col col-main">
-        <div class="col-head"><h2>Lyrics look</h2></div>
-        <div class="form-grid">
-          <label>Font<select id="set-font">${FONTS.map((f) => `<option ${f === s.font ? 'selected' : ''} style="font-family:'${f}'">${f}</option>`).join('')}</select></label>
-          <label>Text color<input type="color" id="set-color" value="${esc(s.textColor)}"></label>
-          <label>Biggest text size <span class="muted" id="set-size-val">${s.maxFontSize}</span><input type="range" id="set-size" min="50" max="160" value="${s.maxFontSize}"></label>
-          <label>Lines per slide<select id="set-lines">${[1, 2, 3, 4, 5, 6, 8].map((n) => `<option ${n === Number(s.linesPerSlide) ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
-          <label class="check"><input type="checkbox" id="set-upper" ${s.uppercase ? 'checked' : ''}> ALL CAPITALS</label>
-          <label class="check"><input type="checkbox" id="set-shadow" ${s.shadow ? 'checked' : ''}> Text shadow (easier to read)</label>
-          <label>Fade time (seconds)<input type="number" id="set-fade" min="0" max="3" step="0.1" value="${s.transitionSeconds}"></label>
-          <label>Default background<select id="set-bg">${bgOptions(s.defaultBackground || 'none', { allowDefault: false })}</select></label>
-        </div>
-        <div class="sample-wrap"><div class="sample" id="set-sample"></div></div>
+      <nav class="col card set-nav" aria-label="Settings sections">${SET_SECTIONS.map(([k, name]) =>
+        `<button data-sec="${k}" class="${k === B.setSection ? 'active' : ''}">${name}</button>`).join('')}</nav>
+      <section class="col card set-main" id="set-main"></section>`;
+    $('.set-nav').onclick = (e) => {
+      const b = e.target.closest('[data-sec]');
+      if (b) { B.setSection = b.dataset.sec; renderBuild(); }
+    };
+    ({ appearance: setAppearance, lyrics: setLyrics, tv: setTv, logo: setLogo, ccli: setCcli, pco: setPco, library: setLibrary })[B.setSection]($('#set-main'), S());
+  }
 
-        <div class="col-head"><h2>CCLI</h2></div>
-        <div class="form-grid">
-          <label>Church CCLI License #<input id="set-ccli" value="${esc(s.ccliLicense)}"></label>
-          <label class="check"><input type="checkbox" id="set-ccli-show" ${s.showCcliFooter ? 'checked' : ''}> Show song credits on each song’s first slide</label>
-        </div>
-      </section>
-      <section class="col col-main">
-        <div class="col-head"><h2>TV sound</h2></div>
-        <p class="hint">Videos play through the Mac’s sound output. The simplest setup: plug in the TV, then choose the TV under the Mac’s <b>Control Center → Sound</b>. Or pick the TV here so videos always use it, even if the Mac's sound is set elsewhere.</p>
-        <div class="row gap"><select id="set-speaker"><option value="">Mac’s current sound output</option>${s.audioDeviceId ? `<option value="${esc(s.audioDeviceId)}" selected>${esc(s.audioDeviceLabel || 'Chosen speaker')}</option>` : ''}</select>
-        <button class="btn" id="set-speaker-find">Find speakers…</button></div>
-        <p class="hint small">Chrome will ask for microphone permission once. That is only how Chrome reveals speaker names; nothing is recorded.</p>
+  function setAppearance(el, s) {
+    const group = (key, name, help, current) => `
+      <fieldset class="theme-group"><legend><strong>${name}</strong><span>${help}</span></legend>
+        <div class="theme-opts">${['light', 'dark'].map((t) => `
+          <label class="theme-opt ${current === t ? 'on' : ''}">
+            <span class="mini ${t}"><span class="bar"></span><span class="panes"><span></span><span></span><span></span></span></span>
+            <span class="row"><input type="radio" name="${key}" value="${t}" ${current === t ? 'checked' : ''}> ${t === 'light' ? 'Light' : 'Dark'}
+              ${(key === 'buildTheme' ? 'light' : 'dark') === t ? '<span class="muted small" style="font-weight:600">Default</span>' : ''}</span>
+          </label>`).join('')}</div>
+      </fieldset>`;
+    el.innerHTML = `
+      <h1>Appearance</h1>
+      <p class="lead">Each mode can have its own look. Using different looks for Build and Present makes it obvious at a glance whether you are editing or presenting.</p>
+      ${group('buildTheme', 'Build mode', 'Playlists, songs, lessons and settings.', s.buildTheme || 'light')}
+      ${group('presentTheme', 'Present mode', 'The screen volunteers use during class.', s.presentTheme || 'dark')}
+      <h2>Accent color</h2>
+      <div class="accent-row">${Object.keys(ACCENTS).map((k) => `<button class="accent-dot ${s.accent === k || (!s.accent && k === 'teal') ? 'on' : ''}" data-accent="${k}" style="background:${ACCENTS[k].light[0]}" aria-label="${k}" title="${k[0].toUpperCase() + k.slice(1)}"></button>`).join('')}</div>
+      <p class="note">The TV always shows your slides and backgrounds exactly as designed. These settings only change this control screen.</p>`;
+    el.onchange = (e) => {
+      if (e.target.name === 'buildTheme' || e.target.name === 'presentTheme') {
+        s[e.target.name] = e.target.value; Store.save(); applyTheme(); renderBuild();
+      }
+    };
+    el.onclick = (e) => {
+      const b = e.target.closest('[data-accent]');
+      if (b) { s.accent = b.dataset.accent; Store.save(); applyTheme(); renderBuild(); }
+    };
+  }
 
-        <div class="col-head"><h2>Logo</h2></div>
-        <p class="hint">Shown full screen when you press <b>Logo</b> (or L).</p>
-        <div class="row gap"><div class="logo-prev" id="set-logo-prev"></div>
-          <button class="btn" id="set-logo">Choose picture…</button>${s.logo ? '<button class="btn danger" id="set-logo-del">Remove</button>' : ''}</div>
-
-        <div class="col-head"><h2>Planning Center</h2></div>
-        <p class="hint">Lets you import songs, with their SongSelect lyrics and song order, straight from Planning Center Services.</p>
-        <ol class="hint steps">
-          <li>In Planning Center, make a login just for this classroom (e.g. “NC Kids Classroom”) with <b>Services: Viewer</b> access and no access to People or Giving. A token can see everything its login can.</li>
-          <li>Signed in as that login, open <a href="https://api.planningcenteronline.com/oauth/applications" target="_blank" rel="noopener">api.planningcenteronline.com/oauth/applications</a> and create a <b>Personal Access Token</b>.</li>
-          <li>Paste its Application ID and Secret here.</li>
-        </ol>
-        <div class="form-grid">
-          <label>Application ID<input id="pco-app" autocomplete="off" spellcheck="false" value="${esc((PCO.credentials() || {}).appId || '')}"></label>
-          <label>Secret<input id="pco-secret" type="password" autocomplete="off" placeholder="${PCO.isConfigured() ? '•••••••• (saved)' : ''}"></label>
-        </div>
-        <div class="row gap"><button class="btn primary" id="pco-save">Save &amp; test</button>${PCO.isConfigured() ? '<button class="btn danger" id="pco-forget">Disconnect</button>' : ''}<span id="pco-test" class="small"></span></div>
-        <p class="hint small">The token is stored only in Chrome on this Mac. It is not saved in the library folder or backups.</p>
-
-        <div class="col-head"><h2>Library folder</h2></div>
-        <p>Everything is saved in the folder <b>${esc(Store.folderName)}</b>. Keep that folder in iCloud Drive or Dropbox so it is backed up. A dated copy of the library list is also kept in its <code>backups</code> folder.</p>
-        <button class="btn" id="set-folder">Switch to a different folder…</button>
-        <p class="muted small">NC Kids Presenter v${APP_VERSION}</p>
-      </section>`;
-
+  function setLyrics(el, s) {
+    el.innerHTML = `
+      <h1>Lyrics on the TV</h1>
+      <p class="lead">How song words look on the TV.</p>
+      <div class="form-grid">
+        <label>Font<select id="set-font">${FONTS.map((f) => `<option ${f === s.font ? 'selected' : ''} style="font-family:'${f}'">${f}</option>`).join('')}</select></label>
+        <label>Text color<input type="color" id="set-color" value="${esc(s.textColor)}"></label>
+        <label>Biggest text size <span class="muted" id="set-size-val">${s.maxFontSize}</span><input type="range" id="set-size" min="50" max="160" value="${s.maxFontSize}"></label>
+        <label>Lines per slide<select id="set-lines">${[1, 2, 3, 4, 5, 6, 8].map((n) => `<option ${n === Number(s.linesPerSlide) ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <label>Fade time (seconds)<input type="number" id="set-fade" min="0" max="3" step="0.1" value="${s.transitionSeconds}"></label>
+        <label>Default background<select id="set-bg">${bgOptions(s.defaultBackground || 'none', { allowDefault: false })}</select></label>
+        <label class="check"><input type="checkbox" id="set-upper" ${s.uppercase ? 'checked' : ''}> ALL CAPITALS</label>
+        <label class="check"><input type="checkbox" id="set-shadow" ${s.shadow ? 'checked' : ''}> Text shadow (easier to read)</label>
+      </div>
+      <div class="sample-wrap"><div class="sample" id="set-sample"></div></div>`;
     const sample = new Renderer($('#set-sample'), { staticOnly: true });
     const drawSample = async () => {
       sample.setBackground(await resolveBg(s.defaultBackground));
@@ -1115,9 +1217,15 @@
     $('#set-shadow').onchange = (e) => upd('shadow', e.target.checked);
     $('#set-fade').onchange = (e) => upd('transitionSeconds', Math.max(0, Math.min(3, Number(e.target.value) || 0)));
     $('#set-bg').onchange = (e) => upd('defaultBackground', e.target.value === 'none' ? null : e.target.value);
-    $('#set-ccli').oninput = (e) => upd('ccliLicense', e.target.value);
-    $('#set-ccli-show').onchange = (e) => upd('showCcliFooter', e.target.checked);
+  }
 
+  function setTv(el, s) {
+    el.innerHTML = `
+      <h1>TV and sound</h1>
+      <p class="lead">Videos play through the Mac’s sound output. The simplest setup: plug in the TV, then choose the TV under the Mac’s <b>Control Center → Sound</b>. Or pick the TV here so videos always use it, even if the Mac's sound is set elsewhere.</p>
+      <div class="row gap" style="max-width:560px"><select id="set-speaker"><option value="">Mac’s current sound output</option>${s.audioDeviceId ? `<option value="${esc(s.audioDeviceId)}" selected>${esc(s.audioDeviceLabel || 'Chosen speaker')}</option>` : ''}</select>
+      <button class="btn" id="set-speaker-find">Find speakers…</button></div>
+      <p class="hint">Chrome will ask for microphone permission once. That is only how Chrome reveals speaker names; nothing is recorded.</p>`;
     $('#set-speaker-find').onclick = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1133,14 +1241,50 @@
       s.audioDeviceLabel = e.target.value ? e.target.selectedOptions[0].textContent : '';
       Store.save(); toast('Saved. Videos will use this speaker.');
     };
+  }
 
-    (async () => { if (s.logo) $('#set-logo-prev').innerHTML = `<img src="${await Store.url(s.logo)}">`; })();
+  function setLogo(el, s) {
+    el.innerHTML = `
+      <h1>Logo</h1>
+      <p class="lead">Shown full screen on the TV when you press <b>Logo</b> (or L).</p>
+      <div class="row gap"><div class="logo-prev" id="set-logo-prev"></div>
+        <button class="btn" id="set-logo">Choose picture…</button>${s.logo ? '<button class="btn danger" id="set-logo-del">Remove</button>' : ''}</div>`;
+    (async () => { if (s.logo) $('#set-logo-prev').innerHTML = `<img src="${await Store.url(s.logo)}" alt="Current logo">`; })();
     $('#set-logo').onclick = async () => {
       const [f] = await pickFiles({ accept: 'image/*', multiple: false });
       if (!f) return;
       try { const path = await Media.importLogo(f); Output.setLogoUrl(await Store.url(path)); renderBuild(); } catch (e) { toast(e.message, 'error'); }
     };
     if (s.logo) $('#set-logo-del').onclick = async () => { await Store.remove(s.logo); s.logo = null; Store.save(); Output.setLogoUrl(null); renderBuild(); };
+  }
+
+  function setCcli(el, s) {
+    el.innerHTML = `
+      <h1>CCLI</h1>
+      <p class="lead">Your church’s CCLI license number is added to the song credits on the TV.</p>
+      <div class="form-grid" style="max-width:640px">
+        <label>Church CCLI License #<input id="set-ccli" value="${esc(s.ccliLicense)}"></label>
+        <label class="check"><input type="checkbox" id="set-ccli-show" ${s.showCcliFooter ? 'checked' : ''}> Show song credits on each song’s first slide</label>
+      </div>`;
+    $('#set-ccli').oninput = (e) => { s.ccliLicense = e.target.value; Store.save(); invalidateSlides(); };
+    $('#set-ccli-show').onchange = (e) => { s.showCcliFooter = e.target.checked; Store.save(); invalidateSlides(); };
+  }
+
+  function setPco(el) {
+    el.innerHTML = `
+      <h1>Planning Center</h1>
+      <p class="lead">Lets you import songs, with their SongSelect lyrics and song order, straight from Planning Center Services.</p>
+      <ol class="steps">
+        <li>In Planning Center, make a login just for this classroom (e.g. “NC Kids Classroom”) with <b>Services: Viewer</b> access and no access to People or Giving. A token can see everything its login can.</li>
+        <li>Signed in as that login, open <a href="https://api.planningcenteronline.com/oauth/applications" target="_blank" rel="noopener">api.planningcenteronline.com/oauth/applications</a> and create a <b>Personal Access Token</b>.</li>
+        <li>Paste its Application ID and Secret here.</li>
+      </ol>
+      <div class="form-grid" style="max-width:640px">
+        <label>Application ID<input id="pco-app" autocomplete="off" spellcheck="false" value="${esc((PCO.credentials() || {}).appId || '')}"></label>
+        <label>Secret<input id="pco-secret" type="password" autocomplete="off" placeholder="${PCO.isConfigured() ? '•••••••• (saved)' : ''}"></label>
+      </div>
+      <div class="row gap"><button class="btn primary" id="pco-save">Save and test</button>${PCO.isConfigured() ? '<button class="btn danger" id="pco-forget">Disconnect</button>' : ''}<span id="pco-test" class="small"></span></div>
+      <p class="hint">The token is stored only in Chrome on this Mac. It is not saved in the library folder or backups.</p>`;
     $('#pco-save').onclick = async () => {
       const appId = $('#pco-app').value.trim();
       const secret = $('#pco-secret').value.trim() || ((PCO.credentials() || {}).secret || '');
@@ -1150,32 +1294,61 @@
       out.textContent = 'Testing…'; out.className = 'small muted';
       try {
         const org = await PCO.test();
-        out.textContent = `✓ Connected to ${org}.`; out.className = 'small ok-text';
+        out.textContent = `Connected to ${org}.`; out.className = 'small ok-text';
         $('#pco-secret').value = ''; $('#pco-secret').placeholder = '•••••••• (saved)';
       } catch (e) { out.textContent = e.message; out.className = 'small error-text'; }
     };
     if ($('#pco-forget')) $('#pco-forget').onclick = () => { if (confirm('Remove the Planning Center token from this Mac?')) { PCO.forget(); renderBuild(); toast('Planning Center disconnected.'); } };
+  }
+
+  function setLibrary(el) {
+    el.innerHTML = `
+      <h1>Library folder</h1>
+      <p class="lead">Everything is saved in the folder <b>${esc(Store.folderName)}</b>. Keep that folder in iCloud Drive or Dropbox so it is backed up. A dated copy of the library list is also kept in its <code>backups</code> folder.</p>
+      <div><button class="btn" id="set-folder">Switch to a different folder…</button></div>
+      <p class="muted small">NC Kids Presenter v${APP_VERSION}</p>`;
     $('#set-folder').onclick = async () => {
       try { await Store.choose(); invalidateSlides(); await afterLibraryOpen(); toast('Switched library folder.'); } catch (e) { /* cancelled */ }
     };
   }
 
   // =====================================================================
-  //  MODES, SETUP & START
+  //  MODES, THEME, SETUP & START
   // =====================================================================
+  // Accent colors: [accent, text-on-accent, soft fill, ring, accent text] for each look.
+  const ACCENTS = {
+    teal:   { light: ['#0F766E', '#FFFFFF', '#F0FDFA', '#99F6E4', '#0F766E'], dark: ['#2DD4BF', '#052E2B', '#173330', '#1F5F55', '#5EEAD4'] },
+    blue:   { light: ['#2563EB', '#FFFFFF', '#EFF6FF', '#BFDBFE', '#1D4ED8'], dark: ['#60A5FA', '#0B1B33', '#1B2A40', '#2B4A75', '#93C5FD'] },
+    orange: { light: ['#C2410C', '#FFFFFF', '#FFF7ED', '#FED7AA', '#C2410C'], dark: ['#FB923C', '#2A1406', '#3A2618', '#6B3D1C', '#FDBA74'] },
+    purple: { light: ['#7C3AED', '#FFFFFF', '#F5F3FF', '#DDD6FE', '#6D28D9'], dark: ['#A78BFA', '#1C1033', '#2A2240', '#4C3A7A', '#C4B5FD'] },
+  };
+
   let mode = 'present';
+  /** Light or dark depends on the mode (Settings → Appearance). */
+  function applyTheme() {
+    const s = (Store.data && Store.data.settings) || {};
+    const onSetup = !$('#setup').classList.contains('hidden');
+    const theme = onSetup ? 'light' : mode === 'present' ? (s.presentTheme || 'dark') : (s.buildTheme || 'light');
+    const root = document.documentElement;
+    root.dataset.theme = theme;
+    const a = (ACCENTS[s.accent] || ACCENTS.teal)[theme];
+    ['--accent', '--accent-ink', '--accent-soft', '--accent-ring', '--accent-text'].forEach((k, i) => root.style.setProperty(k, a[i]));
+  }
+
   function setMode(m) {
     mode = m;
     $$('#modes button').forEach((b) => b.classList.toggle('active', b.dataset.mode === m));
     $('#present').classList.toggle('hidden', m !== 'present');
     $('#build').classList.toggle('hidden', m !== 'build');
+    $('#build-tabs').classList.toggle('hidden', m !== 'build');
+    applyTheme();
     if (m === 'present') renderPresent(); else renderBuild();
   }
 
   function setTvStatus(open) {
     const b = $('#tv-btn');
     b.classList.toggle('on', open);
-    b.innerHTML = open ? '📺 TV is on <small>(click to close)</small>' : '📺 Start TV';
+    b.innerHTML = open ? '<span class="tv-dot"></span>TV is on <small>Close</small>' : `${icon('tv', 18)} Start TV`;
   }
 
   async function afterLibraryOpen() {
@@ -1196,6 +1369,7 @@
     $('#setup-actions').classList.toggle('hidden', !Store.supported());
     $('#reconnect').classList.toggle('hidden', state !== 'needs-permission');
     if (state === 'needs-permission') $('#reconnect').textContent = `Open “${Store.folderName}”`;
+    applyTheme();
   }
 
   function bindTop() {
@@ -1208,7 +1382,7 @@
     $('#reconnect').addEventListener('click', async () => {
       try { if (await Store.reconnect()) await afterLibraryOpen(); } catch (e) { toast(e.message, 'error'); }
     });
-    Store.onSaved = () => { const el = $('#save-status'); el.textContent = 'Saved ✓'; el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 600); };
+    Store.onSaved = () => { const el = $('#save-status'); el.textContent = 'Saved'; el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 600); };
     Store.onError = (msg) => toast(msg, 'error');
     Output.onStatus = setTvStatus;
     window.addEventListener('beforeunload', (e) => {
