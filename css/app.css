@@ -191,6 +191,28 @@ label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--t
 .bank { display: flex; flex-direction: column; gap: 6px; }
 .bank-head { justify-content: space-between; gap: 8px; }
 
+/* ---------- Planning Center ---------- */
+.pco-btn { border-color: #3c5a8a; }
+.pco-dot { font-size: 9px; font-weight: 700; background: #2c4a78; color: #cfe0ff; border-radius: 4px; padding: 1px 4px; vertical-align: middle; margin-left: 4px; }
+.pco-note { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 10px; background: #1c2638; border: 1px solid #2c4a78; border-radius: 8px; padding: 6px 10px; }
+.pco-card { width: min(1100px, 94vw); height: min(760px, 90vh); display: flex; flex-direction: column; gap: 10px; }
+.pco-body { flex: 1; display: grid; grid-template-columns: 1fr 1.1fr; gap: 14px; min-height: 0; }
+.pco-left { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.pco-list { overflow: auto; flex: 1; }
+.pco-list li { flex-direction: row; }
+.pco-list li > .row { width: 100%; }
+.pco-list .name { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.lib-badge { font-size: 11px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; color: var(--muted); white-space: nowrap; }
+.pco-right { overflow: auto; background: var(--bg); border-radius: 10px; padding: 4px 14px 14px; }
+.pco-right h3 { margin: 12px 0 2px; }
+.lyrics-preview { white-space: pre-wrap; font: 13px/1.45 -apple-system, "Helvetica Neue", sans-serif; background: var(--panel); border-radius: 8px; padding: 10px 12px; max-height: 340px; overflow: auto; }
+.pco-foot { flex: none; }
+.error-text { color: var(--danger); }
+.ok-text { color: #7fdc8a; }
+ol.steps { padding-left: 20px; margin: 0; }
+ol.steps li { margin-bottom: 4px; }
+ol.steps a { color: var(--select); }
+
 /* ---------- toasts, busy, modal ---------- */
 #toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 30px); background: #2f3542; color: var(--text); padding: 12px 20px; border-radius: 10px;
          box-shadow: 0 10px 30px rgba(0,0,0,.4); opacity: 0; pointer-events: none; transition: all .25s; z-index: 50; max-width: 80vw; }
