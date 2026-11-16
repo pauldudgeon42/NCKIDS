@@ -19,7 +19,7 @@ const OUT = __dirname + '/shots/';
 
   await page.goto('http://localhost:8765/?demo');
   await page.waitForSelector('#build:not(.hidden)');            // empty library → Build/Backgrounds
-  await choose('#media-import', ['bg_blue_loop.mp4']); await idle();
+  await choose('#media-import', ['bg_blue_loop.mp4', 'bg_space.mp4']); await idle();
   await page.waitForSelector('.media-card');
   await page.click('[data-default]');
   console.log('backgrounds:', await page.$$eval('.media-card', (c) => c.length));
@@ -37,9 +37,18 @@ const OUT = __dirname + '/shots/';
   await page.waitForSelector('#song-title');
   console.log('song:', await page.$eval('#song-title', (e) => e.value), '|', await page.$eval('#song-author', (e) => e.value), '|', await page.$eval('#song-ccli', (e) => e.value));
   await page.fill('#song-arr', 'V1 C V2 C');
+  console.log('song bg tiles:', await page.$$eval('#song-bg .bg-tile', (t) => t.map((x) => x.textContent.trim())));
+  await page.click('#song-bg .bg-tile[title="bg space"]');
   await page.waitForTimeout(600);
   console.log('song slides:', await page.$eval('#song-count', (e) => e.textContent));
   await page.screenshot({ path: OUT + '1-song-editor.png' });
+  // line-splitting: 6 short lines -> 3 + 3; a very long line counts as several screen lines
+  await page.click('#song-new');
+  await page.fill('#song-lyrics', 'Verse 1\nOne\nTwo\nThree\nFour\nFive\nSix\n\nChorus\nThis is a really long line of lyrics that goes on and on and will never fit across the screen\nShort line\nAnother line\nLast line');
+  await page.waitForTimeout(700);
+  const split = await page.evaluate(() => Songs.buildSlides(Store.data.songs.find((x) => x.title === 'New song'), Store.data.settings).map((s) => s.text.split('\n').length));
+  console.log('lines per slide (6 lines + long-line chorus):', JSON.stringify(split));
+  await page.click('#song-del');
 
   await page.click('[data-tab=settings]');
   await page.fill('#set-ccli', '999999');
@@ -69,6 +78,16 @@ const OUT = __dirname + '/shots/';
   await tv.screenshot({ path: OUT + '5-tv-song.png' });
   console.log('tv text:', await tv.$eval('.r-text-inner', (e) => e.textContent.slice(0, 40) + ' | font ' + e.style.fontSize));
   console.log('tv footer:', await tv.$eval('.r-footer', (e) => e.textContent));
+  const bgTitle = () => page.evaluate(() => { const b = Output.state.bg; return b ? Store.data.backgrounds.find((x) => x.id === b.id).title : 'none'; });
+  console.log('song uses its own bg:', await bgTitle());
+  await page.click('#bg-bank .bg-tile[title="bg blue loop"]');
+  await page.waitForTimeout(300);
+  console.log('after bank click:', await bgTitle(), '| tv bg video src set:', await tv.$$eval('.r-bg video', (v) => v.length));
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(300);
+  console.log('next slide keeps bank bg:', await bgTitle());
+  await page.screenshot({ path: OUT + '4b-present-bank.png' });
+  await page.keyboard.press('ArrowLeft');
   for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowRight'); // rest of song → lesson slide 1
   await page.waitForTimeout(800);
   console.log('live item after song:', await page.$eval('.p-item.live .name', (e) => e.textContent));

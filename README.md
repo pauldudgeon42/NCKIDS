@@ -25,6 +25,8 @@ It runs in Google Chrome on the classroom Mac. Nothing needs installing and ther
 
 The box marked **On the TV now** always shows exactly what the kids are seeing.
 
+**Changing the background live:** click any picture under **Backgrounds** (right side) and it fades in behind the words straight away, staying for the next songs too. Songs that were given their own background still use it. Click **↺ Song's own** to go back to normal.
+
 When a video finishes, the screen fades back to the moving background on its own.
 
 ---
@@ -46,7 +48,8 @@ Chorus
 Yes, Jesus loves me
 ```
 
-A blank line inside a part starts a new slide. Long parts are split automatically (Settings → Lines per slide). Use **Order** to repeat parts, e.g. `V1 C V2 C`.
+Pick the song's background by clicking a picture under **Background** ("Default" uses the default background).
+A blank line inside a part starts a new slide. Parts longer than 4 lines on the TV are split onto more slides automatically, and long lines that wrap count as two (change the number in Settings → Lines per slide). Use **Order** to repeat parts, e.g. `V1 C V2 C`.
 If you download lyrics from **CCLI SongSelect** as a `.txt` file, use **Import .txt**. The title, authors and CCLI number fill in automatically.
 
 **Lesson slides:** Lessons tab → **+ From a folder…** and choose the lesson's JPEG folder from the curriculum download. The slides come in order (Slide 2 before Slide 10). You can also pick individual pictures, or drag them in from Finder.

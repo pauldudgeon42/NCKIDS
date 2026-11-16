@@ -3,6 +3,13 @@
 Plain-English notes on what changed in each version. Newest first.
 Version numbers: **major.minor.fix**. A new minor number means new features, and a new fix number means bug fixes only.
 
+## v0.2.0 — backgrounds you can see and change live (November 2026)
+
+- **Live background bank in Present mode:** click any background under "Backgrounds" to change what's behind the words right away. It stays for the following slides and songs. A song that was given its own background still switches to it. Click **↺ Song's own** to go back to each song's chosen backgrounds.
+- **Picking a song's background** is now a row of pictures in the song editor instead of a drop-down list.
+- **Lyrics split by what fits on the TV:** no slide shows more than 4 lines on screen (or whatever "Lines per slide" is set to). A long line that would wrap counts as two lines. Text shrinks a little before a line is split. Extra lines are shared out evenly, so 5 lines become 3 + 2 rather than 4 + 1.
+- Clicking a button in Present mode no longer steals the Space/Enter keys from the clicker.
+
 ## v0.1.0 — first test version (November 2026)
 
 The first version, for testing at home before using it in the classroom.

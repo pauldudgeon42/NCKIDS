@@ -3,6 +3,7 @@
 set -e
 cd "$(dirname "$0")" && mkdir -p media shots && cd media
 ffmpeg -loglevel error -y -f lavfi -i "gradients=s=1280x720:d=4:speed=0.05,format=yuv420p" -c:v libx264 -t 4 bg_blue_loop.mp4
+ffmpeg -loglevel error -y -f lavfi -i "mandelbrot=s=1280x720:r=25,format=yuv420p" -t 3 -c:v libx264 bg_space.mp4
 ffmpeg -loglevel error -y -f lavfi -i "testsrc2=s=1280x720:d=6" -f lavfi -i "sine=frequency=440:duration=6" -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest Lesson_Video.mp4
 python3 - <<'PY'
 from PIL import Image, ImageDraw, ImageFont
