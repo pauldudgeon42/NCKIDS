@@ -7,7 +7,7 @@
  * Data lives in Store.data (see store.js). Call Store.save() after changing it.
  */
 (function () {
-  const APP_VERSION = '0.1.0';
+  const APP_VERSION = '0.2.0';
 
   // ---------- small helpers ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -127,7 +127,8 @@
     if (!ref) return [];
     if (item.type === 'song') {
       const bg = await resolveBg(songBgId(item, ref));
-      return Songs.buildSlides(ref, S()).map((s) => Object.assign(s, { bg }));
+      const ownBg = !!((item && item.background) || ref.background); // chose its own, rather than "Default"
+      return Songs.buildSlides(ref, S()).map((s) => Object.assign(s, { bg, ownBg }));
     }
     if (item.type === 'lesson') {
       const out = [];
@@ -140,7 +141,7 @@
       return [{ kind: 'video', url: await Store.url(ref.path), thumb: await Store.url(ref.thumb), label: fmtTime(ref.duration), title: ref.title }];
     }
     if (item.type === 'background') {
-      return [{ kind: 'background', bg: await resolveBg(ref.id), label: 'Background only' }];
+      return [{ kind: 'background', bg: await resolveBg(ref.id), ownBg: true, label: 'Background only' }];
     }
     return [];
   }
@@ -155,6 +156,31 @@
     else if (slide.kind === 'image') r.setImage(slide.url);
     else if (slide.kind === 'video') r.setVideoPoster(slide.thumb);
     return r;
+  }
+
+  /**
+   * Clickable thumbnails of every background. `selected` is a background id,
+   * 'none' (black) or '' (the default background, only when withDefault is set).
+   */
+  function bgTiles(el, selected, onPick, { withDefault = false } = {}) {
+    const def = byId('backgrounds', S().defaultBackground);
+    const tiles = [];
+    if (withDefault) tiles.push({ id: '', title: 'Default' + (def ? ' (' + def.title + ')' : ''), thumb: def && def.thumb, tag: 'Default' });
+    tiles.push({ id: 'none', title: 'None (black)', thumb: null });
+    for (const b of sortedBy(D().backgrounds)) tiles.push({ id: b.id, title: b.title, thumb: b.thumb });
+    el.innerHTML = tiles.map((t) => `
+      <button type="button" class="bg-tile ${t.id === selected ? 'selected' : ''}" data-bg-id="${esc(t.id)}" title="${esc(t.title)}">
+        <span class="bg-img">${t.thumb ? `<img data-path="${esc(t.thumb)}" alt="">` : ''}${t.tag ? `<span class="bg-tag">${t.tag}</span>` : ''}</span>
+        <span class="bg-name">${esc(t.title)}</span>
+      </button>`).join('') +
+      (D().backgrounds.length ? '' : '<p class="hint bg-empty">No backgrounds yet. Import some in Build → Backgrounds.</p>');
+    $$('img[data-path]', el).forEach(async (img) => { img.src = await Store.url(img.dataset.path); });
+    el.onclick = (e) => {
+      const b = e.target.closest('[data-bg-id]');
+      if (!b) return;
+      $$('.bg-tile', el).forEach((x) => x.classList.toggle('selected', x === b));
+      onPick(b.dataset.bgId);
+    };
   }
 
   function slideCard(slide, index) {
@@ -173,7 +199,53 @@
     selected: 0,       // item shown in the slide grid
     live: null,        // { item, slide } currently on the TV
     cache: new Map(),  // item.id -> slides
+    liveBgId: null,    // background picked from the bank while presenting (null = none picked)
+    liveBgItem: -1,    // which playlist item was live when it was picked
   };
+
+  /**
+   * The background to show behind a slide. A background picked from the bank
+   * replaces the default for every song, but a song that has its own background
+   * still switches to it (until the bank is used again during that song).
+   * Returns undefined for lesson/video slides, which leave the background alone.
+   */
+  async function effectiveBg(slide, itemIndex) {
+    if (slide.bg === undefined) return undefined;
+    if (P.liveBgId === null) return slide.bg;
+    if (slide.ownBg && itemIndex !== P.liveBgItem) return slide.bg;
+    return resolveBg(P.liveBgId);
+  }
+
+  function renderBank() {
+    bgTiles($('#bg-bank'), currentBankId(), pickLiveBg);
+    $('#bank-reset').classList.toggle('hidden', P.liveBgId === null);
+  }
+  function currentBankId() {
+    if (P.liveBgId !== null) return P.liveBgId;
+    return Output.state.bg ? Output.state.bg.id : 'none';
+  }
+  function markBank() {
+    const id = currentBankId();
+    $$('#bg-bank .bg-tile').forEach((t) => t.classList.toggle('selected', t.dataset.bgId === id));
+    $('#bank-reset').classList.toggle('hidden', P.liveBgId === null);
+  }
+  async function pickLiveBg(id) {
+    P.liveBgId = id;
+    P.liveBgItem = P.live ? P.live.item : P.selected;
+    Output.setBackground(await resolveBg(id));
+    markBank();
+    renderPresentSlides();
+  }
+  async function resetLiveBg() {
+    P.liveBgId = null;
+    const pl = currentPlaylist();
+    if (P.live && pl && pl.items[P.live.item]) {
+      const s = (await itemSlides(pl.items[P.live.item]))[P.live.slide];
+      if (s && s.bg !== undefined) Output.setBackground(s.bg);
+    }
+    markBank();
+    renderPresentSlides();
+  }
 
   function currentPlaylist() { return byId('playlists', P.playlistId); }
 
@@ -193,6 +265,7 @@
     $('#present-empty').classList.toggle('hidden', lists.length > 0);
     renderPresentItems();
     renderPresentSlides();
+    renderBank();
   }
 
   function renderPresentItems() {
@@ -221,11 +294,14 @@
     const slides = await itemSlides(item);
     if (token !== slidesRenderToken) return;
     if (!slides.length) { grid.innerHTML = '<p class="muted pad">No slides. (Songs need lyrics; lessons need slide images.)</p>'; return; }
+    const bgs = [];
+    for (const s of slides) bgs.push(await effectiveBg(s, P.selected));
+    if (token !== slidesRenderToken) return;
     slides.forEach((s, i) => {
       const card = slideCard(s, i);
       if (P.live && P.live.item === P.selected && P.live.slide === i) card.classList.add('live');
       grid.appendChild(card);
-      drawThumb(card.querySelector('.thumb'), s);
+      drawThumb(card.querySelector('.thumb'), s, bgs[i]);
     });
     const liveCard = grid.querySelector('.live');
     if (liveCard) liveCard.scrollIntoView({ block: 'nearest' });
@@ -247,7 +323,9 @@
     const slide = slides[slideIndex];
     if (!slide) return;
     P.live = { item: itemIndex, slide: slideIndex, kind: slide.kind };
-    Output.show(slide);
+    const bg = await effectiveBg(slide, itemIndex);
+    Output.show(bg === slide.bg ? slide : Object.assign({}, slide, { bg }));
+    markBank();
     $('#video-controls').classList.toggle('hidden', slide.kind !== 'video');
     updateLiveButtons();
     if (P.selected !== itemIndex) { P.selected = itemIndex; renderPresentItems(); await renderPresentSlides(); }
@@ -327,6 +405,13 @@
     $('#btn-clear').addEventListener('click', clearLive);
     $('#btn-logo').addEventListener('click', toggleLogo);
     $('#btn-next').addEventListener('click', () => step(1));
+    $('#bank-reset').addEventListener('click', resetLiveBg);
+    // Don't leave buttons focused in Present mode, so Space/Enter from a clicker
+    // always means "next slide" rather than "press that button again".
+    document.addEventListener('click', (e) => {
+      const b = mode === 'present' && e.target.closest && e.target.closest('#present button');
+      if (b) b.blur();
+    });
     $('#btn-prev').addEventListener('click', () => step(-1));
     $('#vc-play').addEventListener('click', () => Output.playPause());
     $('#vc-restart').addEventListener('click', () => Output.restartVideo());
@@ -557,7 +642,10 @@
           <label>Author(s)<input id="song-author" value="${esc(song.author)}"></label>
           <label>Copyright<input id="song-copyright" value="${esc(song.copyright)}"></label>
           <label>CCLI Song #<input id="song-ccli" value="${esc(song.ccli)}"></label>
-          <label>Background<select id="song-bg">${bgOptions(song.background || '')}</select></label>
+        </div>
+        <div class="block-label">Background
+          <span class="hint">Click the background to show behind this song. “Default” uses the default from the Backgrounds tab.</span>
+          <div class="bg-tiles" id="song-bg"></div>
         </div>
         <label class="block">Lyrics
           <span class="hint">Put a label like <b>Verse 1</b>, <b>Chorus</b> or <b>Bridge</b> on its own line before each part. A blank line starts a new slide.</span>
@@ -628,7 +716,7 @@
     bindField('#song-ccli', 'ccli');
     bindField('#song-lyrics', 'lyrics');
     bindField('#song-arr', 'arrangement');
-    $('#song-bg').onchange = (e) => { song.background = e.target.value; changed(); };
+    bgTiles($('#song-bg'), song.background || '', (id) => { song.background = id; changed(); }, { withDefault: true });
     $('#song-parts').onclick = (e) => {
       const b = e.target.closest('[data-key]');
       if (!b) return;
