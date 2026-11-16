@@ -7,7 +7,7 @@
  * Data lives in Store.data (see store.js). Call Store.save() after changing it.
  */
 (function () {
-  const APP_VERSION = '0.1.0';
+  const APP_VERSION = '0.3.0';
 
   // ---------- small helpers ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -127,7 +127,8 @@
     if (!ref) return [];
     if (item.type === 'song') {
       const bg = await resolveBg(songBgId(item, ref));
-      return Songs.buildSlides(ref, S()).map((s) => Object.assign(s, { bg }));
+      const ownBg = !!((item && item.background) || ref.background); // chose its own, rather than "Default"
+      return Songs.buildSlides(ref, S()).map((s) => Object.assign(s, { bg, ownBg }));
     }
     if (item.type === 'lesson') {
       const out = [];
@@ -140,7 +141,7 @@
       return [{ kind: 'video', url: await Store.url(ref.path), thumb: await Store.url(ref.thumb), label: fmtTime(ref.duration), title: ref.title }];
     }
     if (item.type === 'background') {
-      return [{ kind: 'background', bg: await resolveBg(ref.id), label: 'Background only' }];
+      return [{ kind: 'background', bg: await resolveBg(ref.id), ownBg: true, label: 'Background only' }];
     }
     return [];
   }
@@ -155,6 +156,31 @@
     else if (slide.kind === 'image') r.setImage(slide.url);
     else if (slide.kind === 'video') r.setVideoPoster(slide.thumb);
     return r;
+  }
+
+  /**
+   * Clickable thumbnails of every background. `selected` is a background id,
+   * 'none' (black) or '' (the default background, only when withDefault is set).
+   */
+  function bgTiles(el, selected, onPick, { withDefault = false } = {}) {
+    const def = byId('backgrounds', S().defaultBackground);
+    const tiles = [];
+    if (withDefault) tiles.push({ id: '', title: 'Default' + (def ? ' (' + def.title + ')' : ''), thumb: def && def.thumb, tag: 'Default' });
+    tiles.push({ id: 'none', title: 'None (black)', thumb: null });
+    for (const b of sortedBy(D().backgrounds)) tiles.push({ id: b.id, title: b.title, thumb: b.thumb });
+    el.innerHTML = tiles.map((t) => `
+      <button type="button" class="bg-tile ${t.id === selected ? 'selected' : ''}" data-bg-id="${esc(t.id)}" title="${esc(t.title)}">
+        <span class="bg-img">${t.thumb ? `<img data-path="${esc(t.thumb)}" alt="">` : ''}${t.tag ? `<span class="bg-tag">${t.tag}</span>` : ''}</span>
+        <span class="bg-name">${esc(t.title)}</span>
+      </button>`).join('') +
+      (D().backgrounds.length ? '' : '<p class="hint bg-empty">No backgrounds yet. Import some in Build → Backgrounds.</p>');
+    $$('img[data-path]', el).forEach(async (img) => { img.src = await Store.url(img.dataset.path); });
+    el.onclick = (e) => {
+      const b = e.target.closest('[data-bg-id]');
+      if (!b) return;
+      $$('.bg-tile', el).forEach((x) => x.classList.toggle('selected', x === b));
+      onPick(b.dataset.bgId);
+    };
   }
 
   function slideCard(slide, index) {
@@ -173,7 +199,53 @@
     selected: 0,       // item shown in the slide grid
     live: null,        // { item, slide } currently on the TV
     cache: new Map(),  // item.id -> slides
+    liveBgId: null,    // background picked from the bank while presenting (null = none picked)
+    liveBgItem: -1,    // which playlist item was live when it was picked
   };
+
+  /**
+   * The background to show behind a slide. A background picked from the bank
+   * replaces the default for every song, but a song that has its own background
+   * still switches to it (until the bank is used again during that song).
+   * Returns undefined for lesson/video slides, which leave the background alone.
+   */
+  async function effectiveBg(slide, itemIndex) {
+    if (slide.bg === undefined) return undefined;
+    if (P.liveBgId === null) return slide.bg;
+    if (slide.ownBg && itemIndex !== P.liveBgItem) return slide.bg;
+    return resolveBg(P.liveBgId);
+  }
+
+  function renderBank() {
+    bgTiles($('#bg-bank'), currentBankId(), pickLiveBg);
+    $('#bank-reset').classList.toggle('hidden', P.liveBgId === null);
+  }
+  function currentBankId() {
+    if (P.liveBgId !== null) return P.liveBgId;
+    return Output.state.bg ? Output.state.bg.id : 'none';
+  }
+  function markBank() {
+    const id = currentBankId();
+    $$('#bg-bank .bg-tile').forEach((t) => t.classList.toggle('selected', t.dataset.bgId === id));
+    $('#bank-reset').classList.toggle('hidden', P.liveBgId === null);
+  }
+  async function pickLiveBg(id) {
+    P.liveBgId = id;
+    P.liveBgItem = P.live ? P.live.item : P.selected;
+    Output.setBackground(await resolveBg(id));
+    markBank();
+    renderPresentSlides();
+  }
+  async function resetLiveBg() {
+    P.liveBgId = null;
+    const pl = currentPlaylist();
+    if (P.live && pl && pl.items[P.live.item]) {
+      const s = (await itemSlides(pl.items[P.live.item]))[P.live.slide];
+      if (s && s.bg !== undefined) Output.setBackground(s.bg);
+    }
+    markBank();
+    renderPresentSlides();
+  }
 
   function currentPlaylist() { return byId('playlists', P.playlistId); }
 
@@ -193,6 +265,7 @@
     $('#present-empty').classList.toggle('hidden', lists.length > 0);
     renderPresentItems();
     renderPresentSlides();
+    renderBank();
   }
 
   function renderPresentItems() {
@@ -221,11 +294,14 @@
     const slides = await itemSlides(item);
     if (token !== slidesRenderToken) return;
     if (!slides.length) { grid.innerHTML = '<p class="muted pad">No slides. (Songs need lyrics; lessons need slide images.)</p>'; return; }
+    const bgs = [];
+    for (const s of slides) bgs.push(await effectiveBg(s, P.selected));
+    if (token !== slidesRenderToken) return;
     slides.forEach((s, i) => {
       const card = slideCard(s, i);
       if (P.live && P.live.item === P.selected && P.live.slide === i) card.classList.add('live');
       grid.appendChild(card);
-      drawThumb(card.querySelector('.thumb'), s);
+      drawThumb(card.querySelector('.thumb'), s, bgs[i]);
     });
     const liveCard = grid.querySelector('.live');
     if (liveCard) liveCard.scrollIntoView({ block: 'nearest' });
@@ -247,7 +323,9 @@
     const slide = slides[slideIndex];
     if (!slide) return;
     P.live = { item: itemIndex, slide: slideIndex, kind: slide.kind };
-    Output.show(slide);
+    const bg = await effectiveBg(slide, itemIndex);
+    Output.show(bg === slide.bg ? slide : Object.assign({}, slide, { bg }));
+    markBank();
     $('#video-controls').classList.toggle('hidden', slide.kind !== 'video');
     updateLiveButtons();
     if (P.selected !== itemIndex) { P.selected = itemIndex; renderPresentItems(); await renderPresentSlides(); }
@@ -327,6 +405,13 @@
     $('#btn-clear').addEventListener('click', clearLive);
     $('#btn-logo').addEventListener('click', toggleLogo);
     $('#btn-next').addEventListener('click', () => step(1));
+    $('#bank-reset').addEventListener('click', resetLiveBg);
+    // Don't leave buttons focused in Present mode, so Space/Enter from a clicker
+    // always means "next slide" rather than "press that button again".
+    document.addEventListener('click', (e) => {
+      const b = mode === 'present' && e.target.closest && e.target.closest('#present button');
+      if (b) b.blur();
+    });
     $('#btn-prev').addEventListener('click', () => step(-1));
     $('#vc-play').addEventListener('click', () => Output.playPause());
     $('#vc-restart').addEventListener('click', () => Output.restartVideo());
@@ -546,6 +631,7 @@
         <div class="row gap wrap">
           <button class="btn primary" id="song-new">+ New song</button>
           <button class="btn" id="song-import" title="Lyrics files downloaded from CCLI SongSelect (.txt)">Import .txt</button>
+          <button class="btn pco-btn" id="song-pco" title="Bring in songs and their SongSelect lyrics from Planning Center">⬇ From Planning Center</button>
         </div>
         <input type="search" id="song-search" placeholder="Search titles and lyrics…">
         <ul class="list" id="song-list"></ul>
@@ -553,11 +639,16 @@
       <section class="col col-main song-editor">
         ${song ? `
         <div class="col-head"><input class="title-input" id="song-title" value="${esc(song.title)}" aria-label="Song title"></div>
+        ${song.pco ? `<div class="pco-note">From Planning Center${song.pco.arrangementName ? ' · arrangement “' + esc(song.pco.arrangementName) + '”' : ''}
+          <button class="btn small" id="song-pco-update" title="Replace the lyrics and order with the latest from Planning Center. The background stays.">↻ Update from Planning Center</button></div>` : ''}
         <div class="form-grid">
           <label>Author(s)<input id="song-author" value="${esc(song.author)}"></label>
           <label>Copyright<input id="song-copyright" value="${esc(song.copyright)}"></label>
           <label>CCLI Song #<input id="song-ccli" value="${esc(song.ccli)}"></label>
-          <label>Background<select id="song-bg">${bgOptions(song.background || '')}</select></label>
+        </div>
+        <div class="block-label">Background
+          <span class="hint">Click the background to show behind this song. “Default” uses the default from the Backgrounds tab.</span>
+          <div class="bg-tiles" id="song-bg"></div>
         </div>
         <label class="block">Lyrics
           <span class="hint">Put a label like <b>Verse 1</b>, <b>Chorus</b> or <b>Bridge</b> on its own line before each part. A blank line starts a new slide.</span>
@@ -578,11 +669,12 @@
     const renderList = () => {
       const q = ($('#song-search').value || '').toLowerCase();
       $('#song-list').innerHTML = songs.filter((s) => !q || s.title.toLowerCase().includes(q) || (s.lyrics || '').toLowerCase().includes(q))
-        .map((s) => `<li class="${s.id === B.song ? 'selected' : ''}" data-id="${s.id}"><strong>${esc(s.title)}</strong><small>${esc(s.author || '')}</small></li>`).join('')
+        .map((s) => `<li class="${s.id === B.song ? 'selected' : ''}" data-id="${s.id}"><strong>${esc(s.title)}${s.pco ? ' <span class="pco-dot" title="From Planning Center">PCO</span>' : ''}</strong><small>${esc(s.author || '')}</small></li>`).join('')
         || '<li class="muted">No songs yet.</li>';
     };
     renderList();
     $('#song-search').oninput = renderList;
+    $('#song-pco').onclick = () => openPcoBrowser();
     $('#song-list').onclick = (e) => { const li = e.target.closest('li[data-id]'); if (li) { B.song = li.dataset.id; renderBuild(); } };
     $('#song-new').onclick = () => {
       const s = { id: Media.id(), title: 'New song', author: '', copyright: '', ccli: '', lyrics: '', arrangement: '', background: '', added: Date.now() };
@@ -628,7 +720,7 @@
     bindField('#song-ccli', 'ccli');
     bindField('#song-lyrics', 'lyrics');
     bindField('#song-arr', 'arrangement');
-    $('#song-bg').onchange = (e) => { song.background = e.target.value; changed(); };
+    bgTiles($('#song-bg'), song.background || '', (id) => { song.background = id; changed(); }, { withDefault: true });
     $('#song-parts').onclick = (e) => {
       const b = e.target.closest('[data-key]');
       if (!b) return;
@@ -637,6 +729,151 @@
     };
     $('#song-arr-clear').onclick = () => { song.arrangement = ''; $('#song-arr').value = ''; changed(); };
     $('#song-del').onclick = async () => { if (await deleteThing('song', song.id)) { B.song = null; renderBuild(); } };
+    if (song.pco) $('#song-pco-update').onclick = async () => {
+      busy('Getting the latest from Planning Center…');
+      try {
+        const arrs = await PCO.arrangements(song.pco.songId);
+        const arr = arrs.find((a) => a.id === song.pco.arrangementId && a.lyrics) || arrs.find((a) => a.lyrics);
+        if (!arr) throw new Error('That song has no lyrics in Planning Center any more.');
+        const list = await PCO.songs();
+        const meta = list.find((x) => x.id === song.pco.songId) || { id: song.pco.songId, title: song.title, author: song.author, copyright: song.copyright, ccli: song.ccli };
+        saveFromPco(meta, arr);
+        busy(); renderBuild(); toast('Updated from Planning Center.');
+      } catch (e) { busy(); toast(e.message, 'error'); }
+    };
+  }
+
+  // ---------- Planning Center import ----------
+  /** Add (or refresh) a song from Planning Center. Keeps the background if it already exists. */
+  function saveFromPco(pcoSong, arr) {
+    const data = PCO.toSong(pcoSong, arr);
+    let song = D().songs.find((s) => s.pco && s.pco.songId === pcoSong.id);
+    if (song) Object.assign(song, data);
+    else {
+      song = Object.assign({ id: Media.id(), background: '', added: Date.now() }, data);
+      D().songs.push(song);
+    }
+    Store.save(); invalidateSlides();
+    B.song = song.id;
+    return song;
+  }
+
+  async function openPcoBrowser() {
+    if (!PCO.isConfigured()) {
+      if (confirm('Planning Center isn’t connected yet. Open Settings to add the access token?')) { setBuildTab('settings'); setTimeout(() => { const el = $('#pco-app'); if (el) el.scrollIntoView({ block: 'center' }); }, 50); }
+      return;
+    }
+    const m = $('#modal');
+    m.innerHTML = `<div class="modal-card pco-card">
+      <div class="col-head"><h2>Import songs from Planning Center</h2><button class="btn" id="pco-close">Close</button></div>
+      <div class="pco-body">
+        <div class="pco-left">
+          <input type="search" id="pco-search" placeholder="Search by title, author or CCLI #" disabled>
+          <ul class="list pco-list" id="pco-list"><li class="muted">Loading songs from Planning Center…</li></ul>
+        </div>
+        <div class="pco-right" id="pco-detail"><p class="muted pad">Click a song to see its lyrics, or tick several and import them all at once.</p></div>
+      </div>
+      <div class="row gap pco-foot"><span id="pco-status" class="muted"></span><span class="spacer"></span>
+        <button class="btn primary" id="pco-import-checked" disabled>Import ticked songs</button></div>
+    </div>`;
+    m.classList.add('show');
+    m.onclick = null;
+    let imported = false;
+    const close = () => { m.classList.remove('show'); m.innerHTML = ''; if (imported && buildTab === 'songs') renderBuild(); };
+    $('#pco-close').onclick = close;
+    const status = (msg, kind = '') => { const el = $('#pco-status'); if (el) { el.textContent = msg; el.className = kind === 'error' ? 'error-text' : 'muted'; } };
+    const checked = new Set();
+    let all = [];
+    const inLibrary = (ps) => D().songs.find((s) => (s.pco && s.pco.songId === ps.id));
+
+    const renderList = () => {
+      const q = ($('#pco-search').value || '').trim().toLowerCase();
+      const rows = all.filter((x) => !x.hidden && (!q || x.title.toLowerCase().includes(q) || x.author.toLowerCase().includes(q) || x.ccli === q));
+      $('#pco-list').innerHTML = rows.slice(0, 300).map((x) => `
+        <li data-pco="${esc(x.id)}" class="${B.pcoSel === x.id ? 'selected' : ''}">
+          <div class="row gap"><input type="checkbox" data-check="${esc(x.id)}" ${checked.has(x.id) ? 'checked' : ''} aria-label="Select ${esc(x.title)}">
+            <span class="name"><strong>${esc(x.title)}</strong><small>${esc(x.author)}</small></span>
+            ${inLibrary(x) ? '<span class="lib-badge">In library</span>' : ''}</div>
+        </li>`).join('') + (rows.length > 300 ? `<li class="muted">…and ${rows.length - 300} more. Type to narrow it down.</li>` : '') || '<li class="muted">No songs match.</li>';
+    };
+    const updateCount = () => {
+      const b = $('#pco-import-checked');
+      b.disabled = !checked.size;
+      b.textContent = checked.size ? `Import ${checked.size} ticked song${checked.size > 1 ? 's' : ''}` : 'Import ticked songs';
+    };
+
+    const showDetail = async (ps) => {
+      B.pcoSel = ps.id;
+      $$('#pco-list li[data-pco]').forEach((li) => li.classList.toggle('selected', li.dataset.pco === ps.id));
+      const box = $('#pco-detail');
+      box.innerHTML = `<p class="muted pad">Loading “${esc(ps.title)}”…</p>`;
+      let arrs;
+      try { arrs = await PCO.arrangements(ps.id); } catch (e) { box.innerHTML = `<p class="error-text pad">${esc(e.message)}</p>`; return; }
+      if (B.pcoSel !== ps.id) return;
+      const withLyrics = arrs.filter((a) => a.lyrics);
+      const existing = inLibrary(ps);
+      if (!withLyrics.length) { box.innerHTML = `<h3>${esc(ps.title)}</h3><p class="muted">This song has no lyrics in Planning Center. (Lyrics come from SongSelect into an arrangement’s Lyrics box.)</p>`; return; }
+      let pick = (existing && withLyrics.find((a) => a.id === existing.pco.arrangementId)) || withLyrics[0];
+      const draw = () => {
+        const sections = Songs.parseSections(pick.lyrics);
+        box.innerHTML = `
+          <h3>${esc(ps.title)}</h3>
+          <p class="muted small">${esc(ps.author)}${ps.ccli ? ' · CCLI # ' + esc(ps.ccli) : ''}</p>
+          ${withLyrics.length > 1 ? `<label class="block-label">Arrangement<select id="pco-arr">${withLyrics.map((a) => `<option value="${esc(a.id)}" ${a.id === pick.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label>` : `<p class="small muted">Arrangement: ${esc(pick.name)}</p>`}
+          <p class="small"><b>Order:</b> ${pick.sequence.length ? esc(pick.sequence.join(' → ')) : '<span class="muted">as written</span>'}</p>
+          <p class="small muted">${sections.length} part${sections.length === 1 ? '' : 's'} found: ${esc(sections.map((x) => x.label).join(', '))}</p>
+          <pre class="lyrics-preview">${esc(pick.lyrics)}</pre>
+          <button class="btn primary" id="pco-import-one">${existing ? '↻ Update the song in the library' : '⬇ Import this song'}</button>`;
+        const sel = $('#pco-arr');
+        if (sel) sel.onchange = () => { pick = withLyrics.find((a) => a.id === sel.value); draw(); };
+        $('#pco-import-one').onclick = () => {
+          const song = saveFromPco(ps, pick);
+          imported = true;
+          status(`${existing ? 'Updated' : 'Imported'} “${song.title}”.`);
+          renderList(); draw();
+        };
+      };
+      draw();
+    };
+
+    $('#pco-list').onclick = (e) => {
+      const cb = e.target.closest('[data-check]');
+      if (cb) { if (cb.checked) checked.add(cb.dataset.check); else checked.delete(cb.dataset.check); updateCount(); return; }
+      const li = e.target.closest('li[data-pco]');
+      if (li) showDetail(all.find((x) => x.id === li.dataset.pco));
+    };
+    $('#pco-import-checked').onclick = async () => {
+      const ids = Array.from(checked);
+      const done = [], skipped = [];
+      $('#pco-import-checked').disabled = true;
+      for (let i = 0; i < ids.length; i++) {
+        const ps = all.find((x) => x.id === ids[i]);
+        status(`Importing ${i + 1} of ${ids.length}: ${ps.title}…`);
+        try {
+          const arr = (await PCO.arrangements(ps.id)).find((a) => a.lyrics);
+          if (!arr) { skipped.push(ps.title + ' (no lyrics)'); continue; }
+          const existing = inLibrary(ps);
+          saveFromPco(ps, existing ? (await PCO.arrangements(ps.id)).find((a) => a.id === existing.pco.arrangementId && a.lyrics) || arr : arr);
+          done.push(ps.title);
+          checked.delete(ps.id);
+        } catch (e) { skipped.push(ps.title + ' (' + e.message + ')'); }
+      }
+      imported = imported || done.length > 0;
+      status(`Imported ${done.length} song${done.length === 1 ? '' : 's'}.` + (skipped.length ? ` Skipped ${skipped.length}: ${skipped.join('; ')}` : ''), skipped.length ? 'error' : '');
+      renderList(); updateCount();
+    };
+
+    try {
+      all = await PCO.songs(false, (n, total) => status(`Loading songs… ${n}${total ? ' of ' + total : ''}`));
+      status(`${all.filter((x) => !x.hidden).length} songs in Planning Center.`);
+      $('#pco-search').disabled = false;
+      $('#pco-search').oninput = renderList;
+      $('#pco-search').focus();
+      renderList();
+    } catch (e) {
+      $('#pco-list').innerHTML = `<li class="error-text">${esc(e.message)}</li>`;
+      status('');
+    }
   }
 
   // ---------- Lessons (slide images) ----------
@@ -843,6 +1080,20 @@
         <div class="row gap"><div class="logo-prev" id="set-logo-prev"></div>
           <button class="btn" id="set-logo">Choose picture…</button>${s.logo ? '<button class="btn danger" id="set-logo-del">Remove</button>' : ''}</div>
 
+        <div class="col-head"><h2>Planning Center</h2></div>
+        <p class="hint">Lets you import songs, with their SongSelect lyrics and song order, straight from Planning Center Services.</p>
+        <ol class="hint steps">
+          <li>In Planning Center, make a login just for this classroom (e.g. “NC Kids Classroom”) with <b>Services: Viewer</b> access and no access to People or Giving. A token can see everything its login can.</li>
+          <li>Signed in as that login, open <a href="https://api.planningcenteronline.com/oauth/applications" target="_blank" rel="noopener">api.planningcenteronline.com/oauth/applications</a> and create a <b>Personal Access Token</b>.</li>
+          <li>Paste its Application ID and Secret here.</li>
+        </ol>
+        <div class="form-grid">
+          <label>Application ID<input id="pco-app" autocomplete="off" spellcheck="false" value="${esc((PCO.credentials() || {}).appId || '')}"></label>
+          <label>Secret<input id="pco-secret" type="password" autocomplete="off" placeholder="${PCO.isConfigured() ? '•••••••• (saved)' : ''}"></label>
+        </div>
+        <div class="row gap"><button class="btn primary" id="pco-save">Save &amp; test</button>${PCO.isConfigured() ? '<button class="btn danger" id="pco-forget">Disconnect</button>' : ''}<span id="pco-test" class="small"></span></div>
+        <p class="hint small">The token is stored only in Chrome on this Mac. It is not saved in the library folder or backups.</p>
+
         <div class="col-head"><h2>Library folder</h2></div>
         <p>Everything is saved in the folder <b>${esc(Store.folderName)}</b>. Keep that folder in iCloud Drive or Dropbox so it is backed up. A dated copy of the library list is also kept in its <code>backups</code> folder.</p>
         <button class="btn" id="set-folder">Switch to a different folder…</button>
@@ -890,6 +1141,20 @@
       try { const path = await Media.importLogo(f); Output.setLogoUrl(await Store.url(path)); renderBuild(); } catch (e) { toast(e.message, 'error'); }
     };
     if (s.logo) $('#set-logo-del').onclick = async () => { await Store.remove(s.logo); s.logo = null; Store.save(); Output.setLogoUrl(null); renderBuild(); };
+    $('#pco-save').onclick = async () => {
+      const appId = $('#pco-app').value.trim();
+      const secret = $('#pco-secret').value.trim() || ((PCO.credentials() || {}).secret || '');
+      const out = $('#pco-test');
+      if (!appId || !secret) { out.textContent = 'Enter both the Application ID and the Secret.'; out.className = 'small error-text'; return; }
+      PCO.saveCredentials(appId, secret);
+      out.textContent = 'Testing…'; out.className = 'small muted';
+      try {
+        const org = await PCO.test();
+        out.textContent = `✓ Connected to ${org}.`; out.className = 'small ok-text';
+        $('#pco-secret').value = ''; $('#pco-secret').placeholder = '•••••••• (saved)';
+      } catch (e) { out.textContent = e.message; out.className = 'small error-text'; }
+    };
+    if ($('#pco-forget')) $('#pco-forget').onclick = () => { if (confirm('Remove the Planning Center token from this Mac?')) { PCO.forget(); renderBuild(); toast('Planning Center disconnected.'); } };
     $('#set-folder').onclick = async () => {
       try { await Store.choose(); invalidateSlides(); await afterLibraryOpen(); toast('Switched library folder.'); } catch (e) { /* cancelled */ }
     };
