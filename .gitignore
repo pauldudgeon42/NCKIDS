@@ -1,0 +1,8 @@
+.DS_Store
+node_modules/
+tests/media/
+tests/shots/
+# Never commit a library folder: lyrics, curriculum and videos are copyrighted
+library.json
+backups/
+media/
