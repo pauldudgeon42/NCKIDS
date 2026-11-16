@@ -31,6 +31,10 @@ tests/              automated smoke test (optional, for developers)
 
 **If the import says it "couldn't reach Planning Center" while the internet works**, Planning Center is probably refusing requests made directly from a web page (a browser rule called CORS). The fix is to move that call out of the browser: either the standalone Mac app (Electron), which isn't subject to that rule, or a tiny relay. `tests/pco-test.js` checks the import against a fake Planning Center, so it can't detect this. Only the real classroom Mac can.
 
+### Look and themes
+
+`css/app.css` is built on color tokens (`--bg`, `--panel`, `--text`, `--accent` …) defined twice: once for `html[data-theme="light"]` and once for `html[data-theme="dark"]`. `applyTheme()` in `js/app.js` sets `data-theme` from the current mode (`settings.buildTheme` / `settings.presentTheme`) and fills in the accent colors from `ACCENTS`. When adding UI, use the tokens rather than fixed colors so both looks keep working. Icons are inline line drawings from `ICONS` / `icon(name)` in `app.js`. Please don't use emoji in the interface.
+
 ### The library folder
 
 ```
