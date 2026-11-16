@@ -72,22 +72,35 @@
     return sections.filter((s) => s.chunks.length);
   }
 
-  /** Arrangement text → list of section keys. Accepts "V1 C V2 C" or "Verse 1, Chorus". */
+  /**
+   * Arrangement text → list of section keys. Accepts short keys ("V1 C V2 C"),
+   * full names ("Verse 1, Chorus") and Planning Center sequences, where names may
+   * not match the lyrics exactly ("Chorus 1" vs "Chorus", "Verse" vs "Verse 1").
+   */
   function parseArrangement(text, sections) {
     if (!text || !text.trim()) return sections.map((s) => s.key);
     const byKey = {};
     for (const s of sections) { byKey[s.key.toUpperCase()] = s.key; byKey[s.label.toUpperCase()] = s.key; }
+    const find = (t) => {
+      const u = t.trim().toUpperCase();
+      if (byKey[u]) return byKey[u];
+      const m = t.match(HEADER_RE);
+      if (m) {
+        const base = sectionKey(m[1].toLowerCase().replace(/\s+/g, ' '), '');
+        const num = m[2] || '';
+        return byKey[(base + num).toUpperCase()] || byKey[(base + (num || '1')).toUpperCase()] ||
+          (num === '1' ? byKey[base.toUpperCase()] : null) || null;
+      }
+      return byKey[(u + '1')] || null;
+    };
     const tokens = text.split(/[,;\n]+/).flatMap((part) => {
       const p = part.trim();
       if (!p) return [];
-      if (byKey[p.toUpperCase()]) return [p];
+      if (find(p)) return [p];
       return p.split(/\s+/);
     });
     const out = [];
-    for (const t of tokens) {
-      const k = byKey[t.toUpperCase()] || byKey[(t + '1').toUpperCase()];
-      if (k) out.push(k);
-    }
+    for (const t of tokens) { const k = find(t); if (k) out.push(k); }
     return out.length ? out : sections.map((s) => s.key);
   }
 
