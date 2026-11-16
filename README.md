@@ -37,7 +37,7 @@ Everything happens in **Build** mode.
 
 **Motion backgrounds:** Backgrounds tab → **Import backgrounds…** (or drag files from Finder). Click **Make default** on the one you use most.
 
-**Songs:** Songs tab → **+ New song**, then paste the lyrics with a label line before each part:
+**Songs:** Songs tab → **New song**, then paste the lyrics into the **Lyrics** view with a label line before each part:
 
 ```
 Verse 1
@@ -48,8 +48,14 @@ Chorus
 Yes, Jesus loves me
 ```
 
-Pick the song's background by clicking a picture under **Background** ("Default" uses the default background).
-A blank line inside a part starts a new slide. Parts longer than 4 lines on the TV are split onto more slides automatically, and long lines that wrap count as two (change the number in Settings → Lines per slide). Use **Order** to repeat parts, e.g. `V1 C V2 C`.
+You can paste straight from a chord chart or lyrics website. Chords, CCLI lines and notes like "(Instrumental)" are removed, and "(x2)" repeats are written out. A note says what changed, with **Undo**.
+
+Switch to the **Slides** view to see the song as slides. Hover between two lines and click **Split here** to start a new slide, or click **Merge** between two slides to join them. Click any words to fix them.
+
+On the right:
+- **Song order:** drag the colored chips to reorder, click × to remove a part (for example a verse you skip with the kids), or click "+ Chorus" to add one.
+- **Look for this song:** change the lines per slide, text size, text position (centered or lower third), all caps or the background for just this song. Tick **Use Settings defaults** to undo.
+
 If you download lyrics from **CCLI SongSelect** as a `.txt` file, use **Import .txt**. The title, authors and CCLI number fill in automatically.
 
 **Songs from Planning Center (easiest):** Songs tab → **⬇ From Planning Center**. Type part of the title, click the song to check the lyrics and choose the arrangement, then **Import this song**. Or tick several songs and click **Import ticked songs**. The lyrics, song order and CCLI details all come across. If the song changes in Planning Center later, open it and click **↻ Update from Planning Center**.

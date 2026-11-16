@@ -25,6 +25,10 @@ tests/              automated smoke test (optional, for developers)
 - **One `library.json`** holds all songs, lessons, videos, backgrounds, playlists and settings. Media files sit next to it in `media/`. It's human-readable, so you can open it in a text editor if needed.
 - **Chrome (or Edge) only.** Safari and Firefox don't support saving to a folder.
 
+### Songs: how slides are made
+
+`js/songs.js` is the one place that turns a song into slides. `layout(song, settings)` gives each section's slides in the order written. In automatic mode, blank lines are breaks and long parts are shared out under "lines per slide" (counting lines that would wrap on the TV). In manual mode, only blank lines are breaks. The Slides view edits a layout and writes it back to `song.lyrics` with `serialize()`, so the lyrics text is always the one source of truth. `effectiveStyle()` merges Settings with the song's own `style`, and each built slide carries that style to the renderer. `cleanLyrics()` does the paste tidy-up and returns a report of what it changed. `tests/song-editor-test.js` covers all of this.
+
 ### Planning Center
 
 `js/pco.js` calls the Planning Center Services API (`/services/v2/songs` and `/songs/{id}/arrangements`) with a Personal Access Token using HTTP basic auth. Lyrics come from the arrangement's `lyrics` field (where SongSelect imports put them), and the song order from its `sequence`. The token is kept in `localStorage`, deliberately **not** in `library.json`, so it never ends up in iCloud, backups or GitHub. Imported songs carry a `pco: { songId, arrangementId, arrangementName, imported }` field.
@@ -52,7 +56,10 @@ media/logo-<id>.png
 ```js
 {
   version: 1,
-  songs:       [{ id, title, author, copyright, ccli, lyrics, arrangement, background }],
+  songs:       [{ id, title, author, copyright, ccli, lyrics, arrangement, background,
+                  slideMode,   // 'auto' (default) or 'manual' after Split here / Merge
+                  style,       // null = Settings defaults, or { linesPerSlide, size: 'smaller'|'normal'|'larger', position: 'center'|'lower', uppercase }
+                  pco }],
   lessons:     [{ id, title, slides: [{ id, path, name }], thumb }],
   videos:      [{ id, title, path, thumb, duration }],
   backgrounds: [{ id, title, type: 'video'|'image', path, thumb }],
@@ -79,6 +86,7 @@ python3 -m http.server 8765 --directory ..  &
 node e2e.js                   # imports everything, builds a playlist, runs it on a "TV" window
 ```
 
+`node song-editor-test.js` checks the song editor (paste cleanup, split / merge / edit, order chips, per-song look).
 `node pco-test.js` checks the Planning Center import against a fake Planning Center (no real account needed).
 
 It prints what it checked and lists any page errors at the end (`ERRORS: none` is the goal). Screenshots go to `tests/shots/`.
