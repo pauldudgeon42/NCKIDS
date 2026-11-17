@@ -328,8 +328,10 @@ async function runSmokeTest(win) {
       await Store.remove('media/smoke.txt');
       r.removed = (await Store.readText('media/smoke.txt')) === null;
       PCO.saveCredentials('APP', 'SECRET'); r.secretRoundTrip = PCO.credentials().secret === 'SECRET'; PCO.forget();
-      const pdf = await (await fetch('app://local/desktop/selftest.pdf')).arrayBuffer();
-      r.pdfPages = (await Media.pdfPages({ data: pdf })).length;
+      try {
+        const pdf = await (await fetch('app://local/desktop/selftest.pdf')).arrayBuffer();
+        r.pdfPages = (await Media.pdfPages({ data: pdf })).length;
+      } catch (e) { r.pdfError = String((e && (e.stack || e.message)) || e); }
       await Output.open();
       await new Promise((res) => setTimeout(res, 1500));
       r.tvOpen = Output.isOpen();
@@ -343,7 +345,7 @@ async function runSmokeTest(win) {
     clearTimeout(timer);
     done(ok ? 0 : 1);
   } catch (e) {
-    results.exception = String(e && e.stack || e);
+    results.exception = (e && (e.stack || e.message)) || JSON.stringify(e);
     clearTimeout(timer);
     done(1);
   }
