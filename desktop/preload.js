@@ -37,6 +37,14 @@ contextBridge.exposeInMainWorld('NCDesktop', {
     remove: (key) => ipcRenderer.sendSync('secret:remove', key),
   },
   tvStatus: () => ipcRenderer.invoke('tv:status'),
+  /** ProContent window (desktop/procontent.js). */
+  procontent: {
+    open: () => ipcRenderer.invoke('pc:open'),
+    signOut: () => ipcRenderer.invoke('pc:signOut'),
+    done: (id) => ipcRenderer.send('pc:done', id),
+    showFile: (file) => ipcRenderer.send('pc:openDownloads', file),
+    onDownload: (cb) => ipcRenderer.on('pc:download', (e, msg) => cb(msg)),
+  },
   /** Phone remote (desktop/remote-server.js). */
   remote: {
     status: () => ipcRenderer.invoke('remote:status'),
