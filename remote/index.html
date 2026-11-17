@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#121418">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="NC Kids Remote">
+  <link rel="apple-touch-icon" href="icon.png">
+  <link rel="icon" href="icon.png">
+  <title>NC Kids Remote</title>
+  <link rel="stylesheet" href="remote.css">
+</head>
+<body>
+  <!-- Connect: shown until this phone is paired -->
+  <main id="connect" class="connect hidden">
+    <img src="icon.png" alt="" class="connect-icon">
+    <h1>Connect to the Mac</h1>
+    <p class="muted">On the Mac, click <b>Phone</b> at the top of NC Kids Presenter. Then enter the 4-digit code it shows, or scan its QR code with this phone’s camera.</p>
+    <form id="connect-form" autocomplete="off">
+      <input id="code" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="one-time-code" placeholder="0000" aria-label="4-digit code">
+      <button class="btn primary big" id="connect-go">Connect</button>
+    </form>
+    <p id="connect-msg" class="msg" role="status"></p>
+    <p class="muted small">This phone must be on the same Wi-Fi as the Mac.</p>
+  </main>
+
+  <!-- The remote -->
+  <div id="app" class="app hidden">
+    <header class="top">
+      <div class="top-title"><span id="pl-title">NC Kids</span><span id="pl-date" class="muted"></span></div>
+      <span id="conn" class="conn" title="Connected to the Mac"></span>
+    </header>
+    <div id="offline" class="offline hidden" role="status"></div>
+    <div id="tvoff" class="tvoff hidden">The TV is off. Click <b>Start TV</b> on the Mac.</div>
+
+    <section id="tab-remote" class="tab">
+      <div class="label-row"><span>On the TV</span><span id="live-tag" class="tag"></span></div>
+      <div id="live-screen" class="scr big"></div>
+
+      <div id="timer-strip" class="strip hidden">
+        <div class="strip-txt"><b id="ts-name"></b><span id="ts-time"></span></div>
+        <div class="strip-bar"><span id="ts-bar"></span></div>
+        <div class="strip-btns"><button class="btn" data-cmd="timerPause" id="ts-pause">Pause</button><button class="btn" data-cmd="timerAdd">+1 min</button><button class="btn" data-cmd="timerStop">Stop</button></div>
+      </div>
+      <div id="video-strip" class="strip hidden">
+        <div class="strip-txt"><b>Video</b><span id="vs-time"></span></div>
+        <div class="strip-bar"><span id="vs-bar"></span></div>
+        <div class="strip-btns"><button class="btn" data-cmd="video" id="vs-play">Pause</button><button class="btn" data-cmd="videoRestart">Restart</button></div>
+      </div>
+
+      <button id="next-card" class="next-card" data-cmd="next">
+        <div id="next-screen" class="scr"></div>
+        <div class="next-txt"><span class="muted">Up next</span><b id="next-title">—</b><span id="next-sub" class="muted"></span></div>
+      </button>
+
+      <button id="btn-next" class="next-btn" data-cmd="next">Next</button>
+      <div class="row4">
+        <button class="btn" data-cmd="back">Back</button>
+        <button class="btn" data-cmd="clear">Clear</button>
+        <button class="btn" data-cmd="black" id="btn-black">Black</button>
+        <button class="btn" data-cmd="logo" id="btn-logo">Logo</button>
+      </div>
+    </section>
+
+    <section id="tab-playlist" class="tab hidden">
+      <select id="pl-select" aria-label="Playlist"></select>
+      <ol id="pl-items" class="items"></ol>
+    </section>
+
+    <section id="tab-backgrounds" class="tab hidden">
+      <div class="label-row"><span>Backgrounds</span><button id="bg-reset" class="btn small hidden" data-cmd="bgReset">Back to song backgrounds</button></div>
+      <p class="muted small">Tap one to change the background on the TV now.</p>
+      <div id="bg-grid" class="grid"></div>
+    </section>
+
+    <section id="tab-timers" class="tab hidden">
+      <div class="label-row"><span>Countdown timers</span></div>
+      <div id="timer-list" class="timer-list"></div>
+      <form id="custom-timer" class="custom-timer" autocomplete="off">
+        <input id="ct-min" inputmode="decimal" placeholder="Minutes" aria-label="Minutes">
+        <input id="ct-name" placeholder="Name (optional)" aria-label="Timer name">
+        <button class="btn primary">Start</button>
+      </form>
+      <div id="timer-strip-2" class="strip hidden">
+        <div class="strip-txt"><b id="ts2-name"></b><span id="ts2-time"></span></div>
+        <div class="strip-btns"><button class="btn" data-cmd="timerPause" id="ts2-pause">Pause</button><button class="btn" data-cmd="timerAdd">+1 min</button><button class="btn" data-cmd="timerStop">Stop</button></div>
+      </div>
+    </section>
+
+    <nav class="tabs">
+      <button data-tab="remote" class="on">Remote</button>
+      <button data-tab="playlist">Playlist</button>
+      <button data-tab="backgrounds">Backgrounds</button>
+      <button data-tab="timers">Timers</button>
+    </nav>
+  </div>
+
+  <video id="awake" src="awake.mp4" muted playsinline loop preload="auto" aria-hidden="true"></video>
+  <script src="remote.js"></script>
+</body>
+</html>

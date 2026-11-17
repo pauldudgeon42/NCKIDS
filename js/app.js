@@ -7,7 +7,7 @@
  * Data lives in Store.data (see store.js). Call Store.save() after changing it.
  */
 (function () {
-  const APP_VERSION = '1.1.0';
+  const APP_VERSION = '1.2.0';
 
   // ---------- small helpers ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -36,6 +36,7 @@
     download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
     refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+    phone: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
   };
   function icon(name, size = 16) {
     return `<svg class="i" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
@@ -158,7 +159,7 @@
     if (!bgId || bgId === 'none') return null;
     const b = byId('backgrounds', bgId);
     if (!b) return null;
-    return { id: b.id, type: b.type, url: await Store.url(b.path), thumb: await Store.url(b.thumb) };
+    return { id: b.id, type: b.type, url: await Store.url(b.path), thumb: await Store.url(b.thumb), thumbPath: b.thumb };
   }
   function songBgId(item, song) {
     return (item && item.background) || (song && song.background) || S().defaultBackground || null;
@@ -184,12 +185,12 @@
     if (item.type === 'lesson') {
       const out = [];
       for (let i = 0; i < ref.slides.length; i++) {
-        out.push({ kind: 'image', url: await Store.url(ref.slides[i].path), label: `Slide ${i + 1}` });
+        out.push({ kind: 'image', url: await Store.url(ref.slides[i].path), path: ref.slides[i].path, label: `Slide ${i + 1}` });
       }
       return out;
     }
     if (item.type === 'video') {
-      return [{ kind: 'video', url: await Store.url(ref.path), thumb: await Store.url(ref.thumb), label: fmtTime(ref.duration), title: ref.title }];
+      return [{ kind: 'video', url: await Store.url(ref.path), thumb: await Store.url(ref.thumb), thumbPath: ref.thumb, label: fmtTime(ref.duration), title: ref.title }];
     }
     if (item.type === 'timer') {
       return [{ kind: 'timer', label: fmtTime(ref.seconds), title: ref.title, timerId: ref.id, seconds: ref.seconds,
@@ -295,6 +296,7 @@
     updateLiveButtons();
   }
   function onTimerTick(t) {
+    remoteSoon();
     const box = $('#timer-controls');
     box.classList.toggle('hidden', !t);
     $$('#timer-bank .timer-chip').forEach((c) => c.classList.toggle('on', !!t && c.dataset.timer === t.timerId));
@@ -337,6 +339,7 @@
     return Output.state.bg ? Output.state.bg.id : 'none';
   }
   function markBank() {
+    remoteSoon();
     const id = currentBankId();
     $$('#bg-bank .bg-tile').forEach((t) => t.classList.toggle('selected', t.dataset.bgId === id));
     $('#bank-reset').classList.toggle('hidden', P.liveBgId === null);
@@ -360,6 +363,11 @@
   }
 
   function currentPlaylist() { return byId('playlists', P.playlistId); }
+  function ensurePlaylistId() {
+    if (P.playlistId && byId('playlists', P.playlistId)) return;
+    const lists = sortedPlaylists();
+    P.playlistId = S().lastPlaylist && byId('playlists', S().lastPlaylist) ? S().lastPlaylist : (lists[0] && lists[0].id) || null;
+  }
 
   async function itemSlides(item) {
     if (!P.cache.has(item.id)) P.cache.set(item.id, await slidesFor(item));
@@ -370,7 +378,7 @@
   function renderPresent() {
     const sel = $('#present-playlist');
     const lists = sortedPlaylists();
-    if (!P.playlistId || !byId('playlists', P.playlistId)) P.playlistId = S().lastPlaylist && byId('playlists', S().lastPlaylist) ? S().lastPlaylist : (lists[0] && lists[0].id);
+    ensurePlaylistId();
     sel.innerHTML = lists.length
       ? lists.map((p) => `<option value="${p.id}" ${p.id === P.playlistId ? 'selected' : ''}>${esc(p.title)}</option>`).join('')
       : '<option>No playlists yet</option>';
@@ -399,6 +407,7 @@
   }
 
   function renderPresentItems() {
+    remoteSoon();
     const pl = currentPlaylist();
     const ol = $('#present-items');
     $('#present-date').textContent = pl && pl.date ? prettyDate(pl.date) : '';
@@ -485,6 +494,7 @@
   }
 
   function markLive() {
+    remoteSoon();
     $$('#present-slides .slide-card').forEach((c) => c.classList.toggle('live',
       !!P.live && Number(c.dataset.item) === P.live.item && Number(c.dataset.slide) === P.live.slide));
     renderPresentItems();
@@ -545,6 +555,7 @@
   }
 
   function updateLiveButtons() {
+    remoteSoon();
     $('#btn-black').classList.toggle('on', Output.state.black);
     $('#btn-logo').classList.toggle('on', Output.state.logo);
   }
@@ -619,11 +630,14 @@
     $('#present-goto-build').addEventListener('click', () => { setMode('build'); setBuildTab('playlists'); });
 
     Output.onVideoTime = (cur, dur, paused) => {
+      R.video = { cur: Math.floor(cur || 0), dur: Math.round(dur || 0), paused: !!paused };
+      remoteSoon();
       $('#vc-time').textContent = `${fmtTime(cur)} / ${fmtTime(dur)}  ·  ${fmtTime(dur - cur)} left`;
       $('#vc-bar').style.width = dur ? (100 * cur / dur) + '%' : '0';
       $('#vc-play').textContent = paused ? 'Play' : 'Pause';
     };
     Output.onVideoEnded = () => {
+      R.video = null;
       if (P.live) P.last = P.live;
       P.live = null;
       $('#video-controls').classList.add('hidden');
@@ -633,6 +647,187 @@
     bindTimers();
     Output.onKey = onKey;
     document.addEventListener('keydown', onKey);
+  }
+
+
+  // =====================================================================
+  //  PHONE REMOTE (Mac app only; the server is desktop/remote-server.js)
+  // =====================================================================
+  // The page sends phones three things: "setup" (backgrounds, timers, playlists,
+  // colors), "playlist" (every item and its slides) and "live" (what's on the TV).
+  // Phones send back commands such as next, back, go to a slide or pick a background.
+  const R = { bridge: null, status: { running: false }, timer: null, video: null };
+
+  function remoteBridge() {
+    return window.NCRemoteBridge || (window.NCDesktop && window.NCDesktop.remote) || null;
+  }
+  function remoteSoon() {
+    if (!R.bridge || !R.status.running || R.timer) return;
+    R.timer = setTimeout(() => { R.timer = null; publishRemote().catch((e) => console.warn('Phone remote', e)); }, 60);
+  }
+
+  function phoneSlide(s) {
+    const bgPath = (bg) => (bg && bg.thumbPath) || null;
+    if (s.kind === 'text') return { k: 'text', text: s.text, l: s.label || '', bg: bgPath(s._bg) };
+    if (s.kind === 'image') return { k: 'image', img: s.path || null, l: s.label || '' };
+    if (s.kind === 'video') return { k: 'video', img: s.thumbPath || null, l: s.label || '', title: s.title || '' };
+    if (s.kind === 'timer') return { k: 'timer', title: s.title, sec: s.seconds, l: s.label || '' };
+    if (s.kind === 'background') return { k: 'background', bg: bgPath(s._bg), l: s.label || '' };
+    return { k: s.kind, l: s.label || '' };
+  }
+
+  async function peekNext() {
+    const pl = currentPlaylist();
+    if (!pl || !pl.items.length) return null;
+    const cur = P.live || P.last;
+    if (!cur || (P.cued !== null && P.cued !== cur.item)) {
+      const f = await firstWithSlides(P.cued === null ? 0 : P.cued, 1);
+      return f ? { item: f.i, slide: 0 } : null;
+    }
+    const slides = await itemSlides(pl.items[cur.item]);
+    if (cur.slide + 1 < slides.length) return { item: cur.item, slide: cur.slide + 1 };
+    const f = await firstWithSlides(cur.item + 1, 1);
+    return f ? { item: f.i, slide: 0 } : null;
+  }
+
+  async function publishRemote() {
+    const b = R.bridge;
+    if (!b || !Store.data) return;
+    ensurePlaylistId();
+    const s = S();
+    const theme = s.presentTheme || 'dark';
+    b.publish('setup', {
+      theme, accent: (ACCENTS[s.accent] || ACCENTS.teal)[theme],
+      logo: !!s.logo,
+      backgrounds: sortedBy(D().backgrounds).map((x) => ({ id: x.id, title: x.title, thumb: x.thumb || null })),
+      timers: (D().timers || []).map((t) => ({ id: t.id, title: t.title, seconds: t.seconds })),
+      playlists: sortedPlaylists().map((p) => ({ id: p.id, title: p.title, date: p.date ? prettyDate(p.date) : '' })),
+    });
+    const pl = currentPlaylist();
+    const items = [];
+    if (pl) {
+      for (let i = 0; i < pl.items.length; i++) {
+        const it = pl.items[i];
+        if (it.type === 'label') { items.push({ i, type: 'label', title: it.title || 'Section' }); continue; }
+        const slides = [];
+        for (const sl of await itemSlides(it)) {
+          const bg = await effectiveBg(sl, i);
+          slides.push(phoneSlide(Object.assign({}, sl, { _bg: bg === undefined ? sl.bg : bg })));
+        }
+        items.push({ i, type: it.type, typeName: TYPE_NAME[it.type], title: itemTitle(it), n: itemNumber(pl, i), slides });
+      }
+    }
+    b.publish('playlist', pl ? { id: pl.id, title: pl.title, date: pl.date ? prettyDate(pl.date) : '', items } : null);
+    const t = Output.timer;
+    const bankBg = currentBankId();
+    const bankB = byId('backgrounds', bankBg);
+    b.publish('live', {
+      tv: { open: Output.isOpen(), black: !!Output.state.black, logo: !!Output.state.logo },
+      live: P.live ? { item: P.live.item, slide: P.live.slide } : null,
+      last: P.last ? { item: P.last.item, slide: P.last.slide } : null,
+      cued: P.cued,
+      next: await peekNext(),
+      bank: bankBg, bankOverride: P.liveBgId !== null, bankThumb: bankB ? bankB.thumb : null,
+      timer: t ? { title: t.title, remaining: Math.ceil(t.remaining), total: t.total, paused: !!t.paused, done: !!t.done } : null,
+      video: P.live && P.live.kind === 'video' ? R.video : null,
+    });
+  }
+
+  async function onRemoteCommand(c) {
+    if (!Store.data || !c) return;
+    const num = (v) => (Number.isInteger(Number(v)) ? Number(v) : -1);
+    if (c.cmd !== 'hello' && mode !== 'present') setMode('present');
+    switch (c.cmd) {
+      case 'hello': break;
+      case 'next': await step(1); break;
+      case 'back': await step(-1); break;
+      case 'clear': clearLive(); break;
+      case 'black': Output.toggleBlack(); updateLiveButtons(); break;
+      case 'logo': if (S().logo) { Output.toggleLogo(); updateLiveButtons(); } break;
+      case 'go': await goLive(num(c.item), num(c.slide)); break;
+      case 'bg': if (c.id === 'none' || byId('backgrounds', c.id)) { await pickLiveBg(String(c.id)); renderBank(); } break;
+      case 'bgReset': await resetLiveBg(); renderBank(); break;
+      case 'timer': { const t = byId('timers', c.id); if (t) startTimer(t, false); break; }
+      case 'timerCustom': {
+        const min = Number(c.minutes);
+        if (min > 0 && min <= 180) startTimer({ id: 'custom', title: String(c.title || '').slice(0, 60).trim() || 'Timer', seconds: Math.round(min * 60), message: 'Time’s up!', chime: true }, false);
+        break;
+      }
+      case 'timerPause': Output.pauseTimer(); break;
+      case 'timerAdd': Output.addTime(60); break;
+      case 'timerStop': if (Output.timer) clearLive(); break;
+      case 'video': if (P.live && P.live.kind === 'video') Output.playPause(); break;
+      case 'videoRestart': if (P.live && P.live.kind === 'video') Output.restartVideo(); break;
+      case 'playlist': {
+        if (!byId('playlists', c.id)) break;
+        const sel = $('#present-playlist');
+        sel.value = c.id;
+        sel.dispatchEvent(new Event('change'));
+        break;
+      }
+      default: return;
+    }
+    remoteSoon();
+  }
+
+  function bindRemote() {
+    R.bridge = remoteBridge();
+    if (!R.bridge) return;
+    R.bridge.onCommand((c) => { onRemoteCommand(c).catch((e) => console.warn('Phone remote command', e)); });
+    R.bridge.onStatus((st) => { R.status = st || { running: false }; renderPhoneBtn(); renderPhoneModal(); remoteSoon(); });
+    Promise.resolve(R.bridge.status()).then((st) => { R.status = st || { running: false }; renderPhoneBtn(); remoteSoon(); });
+  }
+
+  function renderPhoneBtn() {
+    const b = $('#phone-btn');
+    if (!b) return;
+    const st = R.status;
+    b.classList.toggle('on', !!st.running);
+    b.innerHTML = `${icon('phone', 17)} Phone${st.running && st.watching ? ` <small>${st.watching}</small>` : ''}`;
+    b.title = st.running ? 'Phone remote is on' : 'Use a phone as a remote';
+  }
+
+  async function openPhoneRemote() {
+    if (!R.bridge) { toast('The phone remote works in the Mac app.'); return; }
+    const m = $('#modal');
+    m.innerHTML = `<div class="modal-card phone-card"><div class="col-head"><h2>Phone remote</h2><button class="btn" id="phone-close">Close</button></div><div id="phone-body"></div></div>`;
+    m.classList.add('show');
+    const close = () => { m.classList.remove('show'); m.innerHTML = ''; };
+    $('#phone-close').onclick = close;
+    m.onclick = (e) => { if (e.target === m) close(); };
+    renderPhoneModal();
+  }
+
+  function renderPhoneModal() {
+    const body = $('#phone-body');
+    if (!body) return;
+    const st = R.status;
+    if (!st.running) {
+      body.innerHTML = `<div class="phone-off">
+        <p>Run the slides from a phone or tablet at the front of the room. It opens in the phone’s web browser, so there’s nothing to install.</p>
+        <ul class="hint-list"><li>The phone must be on the <b>same Wi-Fi</b> as this Mac.</li><li>Only phones that enter the code shown here can control the TV.</li><li>The first time, the Mac may ask whether NC Kids Presenter can accept incoming connections. Click <b>Allow</b>.</li></ul>
+        <button class="btn primary" id="phone-start">Turn on phone remote</button></div>`;
+      $('#phone-start').onclick = async () => {
+        try { R.status = await R.bridge.start(); renderPhoneBtn(); renderPhoneModal(); remoteSoon(); }
+        catch (e) { toast('The phone remote could not start: ' + (e.message || e), 'error'); }
+      };
+      return;
+    }
+    const others = (st.otherUrls || []).length ? `<p class="hint">Other addresses for this Mac: ${st.otherUrls.map(esc).join(', ')}</p>` : '';
+    body.innerHTML = `<div class="phone-on">
+      <div class="phone-qr">${QR.svg(st.pairUrl)}</div>
+      <div class="phone-steps">
+        ${st.noNetwork ? '<p class="error-text">This Mac isn’t on a network. Connect it to the classroom Wi-Fi.</p>' : ''}
+        <p><b>Scan the code</b> with the phone’s camera, and it connects straight away.</p>
+        <p>Or open <b class="mono">${esc(st.url)}</b> in the phone’s browser and enter</p>
+        <div class="phone-code">${esc(st.code)}</div>
+        ${others}
+        <p class="hint">${st.phones ? `${st.phones} phone${st.phones === 1 ? '' : 's'} connected.` : 'No phones connected yet.'} More than one phone can connect.</p>
+        <div class="row-gap"><button class="btn" id="phone-new">New code</button><button class="btn danger" id="phone-stop">Turn off</button></div>
+        <p class="hint">“New code” disconnects every phone. It turns off by itself when the app quits.</p>
+      </div></div>`;
+    $('#phone-new').onclick = async () => { R.status = await R.bridge.newCode(); renderPhoneBtn(); renderPhoneModal(); };
+    $('#phone-stop').onclick = async () => { R.status = await R.bridge.stop(); renderPhoneBtn(); renderPhoneModal(); };
   }
 
   // =====================================================================
@@ -1967,9 +2162,13 @@
     $('#reconnect').addEventListener('click', async () => {
       try { if (await Store.reconnect()) await afterLibraryOpen(); } catch (e) { toast(e.message, 'error'); }
     });
-    Store.onSaved = () => { const el = $('#save-status'); el.textContent = 'Saved'; el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 600); };
+    Store.onSaved = () => {
+      const el = $('#save-status'); el.textContent = 'Saved'; el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 600);
+      remoteSoon(); // phones see library changes (e.g. a playlist edited in Build)
+    };
     Store.onError = (msg) => toast(msg, 'error');
-    Output.onStatus = setTvStatus;
+    Output.onStatus = (open) => { setTvStatus(open); remoteSoon(); };
+    $('#phone-btn').addEventListener('click', openPhoneRemote);
     window.addEventListener('beforeunload', (e) => {
       if (Output.isOpen()) { e.preventDefault(); e.returnValue = ''; }
     });
@@ -1978,6 +2177,7 @@
   async function start() {
     bindTop();
     bindPresent();
+    bindRemote();
     Output.init($('#live-preview'));
     setTvStatus(false);
     if (!Store.supported()) { showSetup('none'); return; }
@@ -1991,6 +2191,6 @@
     if (state === 'ready') await afterLibraryOpen(); else showSetup(state);
   }
 
-  window.NCApp = { start, version: APP_VERSION, _P: P, step, goLive, setMode, setBuildTab };
+  window.NCApp = { start, version: APP_VERSION, _P: P, _R: R, step, goLive, setMode, setBuildTab, publishRemote };
   document.addEventListener('DOMContentLoaded', start);
 })();
