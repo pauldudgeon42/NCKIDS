@@ -106,7 +106,8 @@ jobs:
         run: |
           APP="$(ls -d dist/mac-arm64/*.app)"
           rcodesign sign "$APP"
-          rcodesign verify "$APP"
+          rcodesign verify "$APP/Contents/MacOS/NC Kids Presenter"
+          rcodesign print-signature-info "$APP/Contents/MacOS/NC Kids Presenter" | grep -iE "identifier|flags|adhoc" | head -5
           file "$APP/Contents/MacOS/NC Kids Presenter"
       - name: Zip it, keeping the Mac file details
         run: |
