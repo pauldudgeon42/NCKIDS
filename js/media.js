@@ -22,7 +22,10 @@
   }
 
   /** Load a video file, check Chrome can show it, and grab a frame. */
-  function probeVideo(file) { return probeUrl(URL.createObjectURL(file), true); }
+  function probeVideo(file) {
+    // A file already on disk in the Mac app (e.g. a ProContent download) is checked in place, not read into memory.
+    return file.ncUrl ? probeUrl(file.ncUrl, false) : probeUrl(URL.createObjectURL(file), true);
+  }
   /** Same, for a URL (e.g. a video already saved in the library). */
   function probeUrl(url, revoke) {
     return new Promise((resolve) => {

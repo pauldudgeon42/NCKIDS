@@ -7,7 +7,7 @@
  * Data lives in Store.data (see store.js). Call Store.save() after changing it.
  */
 (function () {
-  const APP_VERSION = '1.2.0';
+  const APP_VERSION = '1.3.0';
 
   // ---------- small helpers ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -1791,13 +1791,13 @@
   }
 
   // ---------- Videos & Backgrounds (media grids) ----------
-  function mediaGrid(body, { type, title, hint, importLabel, accept, importer, extraButtons }) {
+  function mediaGrid(body, { type, title, hint, importLabel, accept, importer, extraButtons, headerButtons = '' }) {
     const coll = COLLECTION[type];
     const items = sortedBy(D()[coll]);
     body.innerHTML = `
       <section class="col card col-full" id="media-main">
         <div class="col-head"><h2>${title}</h2>
-          <div class="row gap"><input type="search" id="media-search" placeholder="Search…"><button class="btn primary" id="media-import">${importLabel}</button><button class="btn" id="media-import-folder">+ From a folder…</button></div>
+          <div class="row gap"><input type="search" id="media-search" placeholder="Search…"><button class="btn primary" id="media-import">${importLabel}</button><button class="btn" id="media-import-folder">+ From a folder…</button>${headerButtons}</div>
         </div>
         <p class="hint">${hint}</p>
         <div class="media-grid" id="media-grid"></div>
@@ -1805,10 +1805,11 @@
     const render = () => {
       const q = ($('#media-search').value || '').toLowerCase();
       const grid = $('#media-grid');
-      grid.innerHTML = items.filter((x) => !q || x.title.toLowerCase().includes(q)).map((x) => `
+      grid.innerHTML = items.filter((x) => !q || x.title.toLowerCase().includes(q) || (x.source === 'procontent' && 'procontent'.includes(q))).map((x) => `
         <div class="media-card" data-id="${x.id}">
           <div class="media-thumb"><img data-path="${esc(x.thumb || '')}" alt=""><span class="badge">${x.type === 'image' ? 'Still' : (x.duration ? fmtTime(x.duration) : 'Motion')}</span>
-            ${type === 'background' && S().defaultBackground === x.id ? '<span class="badge default">Default</span>' : ''}</div>
+            ${type === 'background' && S().defaultBackground === x.id ? '<span class="badge default">Default</span>' : ''}
+            ${x.source === 'procontent' ? '<span class="badge source">ProContent</span>' : ''}</div>
           <input class="media-title" value="${esc(x.title)}" data-title="${x.id}">
           <div class="row gap">${extraButtons ? extraButtons(x) : ''}<button class="icon-btn danger" data-del="${x.id}" title="Delete" aria-label="Delete">${icon('x')}</button></div>
         </div>`).join('') || '<p class="muted pad">Nothing here yet. Use the import button, or drag files from Finder onto this page.</p>';
@@ -1868,14 +1869,66 @@
       hint: 'Motion loops (or still pictures) shown behind song lyrics. The default background is used for any song that doesn’t pick its own.',
       importer: (files, p) => Media.importBackgrounds(files, p),
       extraButtons: (x) => S().defaultBackground === x.id ? '<span class="muted small">Default</span>' : `<button class="btn small" data-default="${x.id}">Make default</button>`,
+      headerButtons: pcBridge() ? '<button class="btn" id="pc-open">ProContent</button>' : '',
     });
+    if ($('#pc-open')) $('#pc-open').onclick = openProContent;
+  }
+
+  // ---------- ProContent (Mac app only; the window is desktop/procontent.js) ----------
+  function pcBridge() { return window.NCProContentBridge || (window.NCDesktop && window.NCDesktop.procontent) || null; }
+  function openProContent() {
+    if (!pcBridge()) { toast('ProContent opens in the Mac app.'); return; }
+    if (!S().pcSeenNote) {
+      toast('Sign in with the church’s ProContent account. Anything you download goes straight into Backgrounds.');
+      S().pcSeenNote = true; Store.save();
+    }
+    return pcBridge().open();
+  }
+  let pcQueue = Promise.resolve();
+  function bindProContent() {
+    const pc = pcBridge();
+    if (!pc) return;
+    pc.onDownload((m) => {
+      if (m.state === 'started') toast(`Downloading “${m.name}” from ProContent…`);
+      else if (m.state === 'unpacking') toast(`Unpacking “${m.name}”…`);
+      else if (m.state === 'failed') toast(`ProContent: ${m.name}. ${m.message}`, 'error');
+      else if (m.state === 'elsewhere') toast(`“${m.name}” isn’t a video or picture, so it was saved in the Downloads folder.`);
+      else if (m.state === 'ready') pcQueue = pcQueue.then(() => importProContent(m)).catch((e) => toast('Couldn’t add the ProContent download: ' + e.message, 'error'));
+    });
+  }
+  async function importProContent(m) {
+    if (!Store.data) { pcBridge().done(m.id); return; }
+    const files = [];
+    for (const f of m.files) {
+      let file;
+      if (Media.isImage(f)) {
+        const blob = await (await fetch(f.url)).blob();
+        file = new File([blob], f.name, { type: blob.type });
+      } else {
+        file = new File([], f.name); // big videos are copied on disk, never read into memory
+      }
+      file.ncPath = f.path; file.ncUrl = f.url;
+      files.push(file);
+    }
+    let result;
+    try { result = await Media.importBackgrounds(files, (msg) => busy(msg.replace('Importing', 'Adding ProContent'))); }
+    finally { busy(); pcBridge().done(m.id); }
+    const { added, problems } = result;
+    added.forEach((b) => { b.source = 'procontent'; });
+    Store.save();
+    if (mode === 'build' && buildTab === 'backgrounds') renderBuild();
+    if (mode === 'present') renderBank();
+    if (added.length) toast(added.length === 1 ? `Added “${added[0].title}” to Backgrounds.` : `Added ${added.length} backgrounds from “${m.name}”.`);
+    reportProblems(problems);
   }
 
   // ---------- Settings ----------
   const FONTS = ['Avenir Next', 'Helvetica Neue', 'Arial Rounded MT Bold', 'Futura', 'Gill Sans', 'Verdana', 'Chalkboard SE', 'Marker Felt', 'Noteworthy', 'Georgia'];
   const SET_SECTIONS = [
     ['appearance', 'Appearance'], ['lyrics', 'Lyrics on the TV'], ['tv', 'TV and sound'], ['logo', 'Logo'],
-    ['timers', 'Timers'], ['ccli', 'CCLI'], ['pco', 'Planning Center'], ['library', 'Library folder'],
+    ['timers', 'Timers'], ['ccli', 'CCLI'], ['pco', 'Planning Center'],
+    ...(pcBridge() ? [['procontent', 'ProContent']] : []),
+    ['library', 'Library folder'],
   ];
 
   function buildSettings(body) {
@@ -1888,7 +1941,7 @@
       const b = e.target.closest('[data-sec]');
       if (b) { B.setSection = b.dataset.sec; renderBuild(); }
     };
-    ({ appearance: setAppearance, lyrics: setLyrics, tv: setTv, logo: setLogo, ccli: setCcli, pco: setPco, library: setLibrary, timers: setTimers })[B.setSection]($('#set-main'), S());
+    ({ appearance: setAppearance, lyrics: setLyrics, tv: setTv, logo: setLogo, ccli: setCcli, pco: setPco, procontent: setProContent, library: setLibrary, timers: setTimers })[B.setSection]($('#set-main'), S());
   }
 
   function setAppearance(el, s) {
@@ -2003,6 +2056,27 @@
       </div>`;
     $('#set-ccli').oninput = (e) => { s.ccliLicense = e.target.value; Store.save(); invalidateSlides(); };
     $('#set-ccli-show').onchange = (e) => { s.showCcliFooter = e.target.checked; Store.save(); invalidateSlides(); };
+  }
+
+  function setProContent(el) {
+    const n = D().backgrounds.filter((b) => b.source === 'procontent').length;
+    el.innerHTML = `
+      <h1>ProContent</h1>
+      <p class="lead">Browse and download Renewed Vision’s ProContent motion backgrounds without leaving the app. Open it from <b>Build → Backgrounds → ProContent</b>.</p>
+      <ul class="steps">
+        <li>Sign in with the church’s ProContent account, the same as on the ProContent website. The sign-in is remembered on this Mac.</li>
+        <li>Download a single loop or a whole pack, and it goes straight into Backgrounds, marked “ProContent”. Packs are unpacked for you.</li>
+        <li>4K loops are big. If one plays choppily, download the HD (1080p) version instead.</li>
+        <li><b>Licensing:</b> ProContent backgrounds can only be used while the church’s membership is active (items bought one at a time keep their license). If the membership ends, search Backgrounds for “ProContent” to find the ones to remove.</li>
+      </ul>
+      <p class="small muted">${n} background${n === 1 ? '' : 's'} came from ProContent.</p>
+      <div class="row gap"><button class="btn primary" id="pc-open-2">Open ProContent</button><button class="btn danger" id="pc-signout">Sign out of ProContent</button></div>`;
+    $('#pc-open-2').onclick = openProContent;
+    $('#pc-signout').onclick = async () => {
+      if (!confirm('Sign out of ProContent on this Mac? Backgrounds you already downloaded stay.')) return;
+      await pcBridge().signOut();
+      toast('Signed out of ProContent.');
+    };
   }
 
   function setPco(el) {
@@ -2178,6 +2252,7 @@
     bindTop();
     bindPresent();
     bindRemote();
+    bindProContent();
     Output.init($('#live-preview'));
     setTvStatus(false);
     if (!Store.supported()) { showSetup('none'); return; }
@@ -2191,6 +2266,6 @@
     if (state === 'ready') await afterLibraryOpen(); else showSetup(state);
   }
 
-  window.NCApp = { start, version: APP_VERSION, _P: P, _R: R, step, goLive, setMode, setBuildTab, publishRemote };
+  window.NCApp = { start, version: APP_VERSION, _P: P, _R: R, openProContent, step, goLive, setMode, setBuildTab, publishRemote };
   document.addEventListener('DOMContentLoaded', start);
 })();
