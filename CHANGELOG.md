@@ -3,6 +3,15 @@
 Plain-English notes on what changed in each version. Newest first.
 Version numbers: **major.minor.fix**. A new minor number means new features, and a new fix number means bug fixes only.
 
+## v1.0.0 — the Mac app (November 2026)
+
+- **NC Kids Presenter is now a Mac app.** Download the installer from GitHub Releases, drag it to Applications, and open it from the Dock. No more Chrome bookmark.
+- **The TV fills by itself:** Start TV puts the presentation full screen on the TV, without the "click to fill" step. If the TV is plugged in later, the TV window moves onto it.
+- **Planning Center works:** the song import (and Save and test) now connect, because the Mac app isn't subject to the browser's block. The token is encrypted with the Mac Keychain.
+- **The library is saved straight to disk.** Imported videos and pictures are copied directly from their files, which is faster for big videos. The same library folder works in both the Mac app and the Chrome version.
+- **Folder imports** (lesson slides, videos, backgrounds) use the normal Mac folder dialog.
+- GitHub builds the installer automatically for every change, and attaches it to each published Release.
+
 ## v0.6.0 — countdown timers (November 2026)
 
 - **Timers in Present mode:** one click starts a countdown on the TV, shown big over the moving background. Six are ready to go: Class starts soon (5 min), Cleanup time (3), Game time (2), Activity time (10), Discussion time (5) and Quiet time (1). **Custom** starts any length with your own name.

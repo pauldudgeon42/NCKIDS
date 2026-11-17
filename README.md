@@ -2,17 +2,16 @@
 
 A simple presentation app for the kids' classroom on Sunday mornings. It shows **song lyrics over moving backgrounds**, **lesson slides** (the JPEGs from the curriculum download) and **videos with sound**, all on one TV.
 
-It runs in Google Chrome on the classroom Mac. Nothing needs installing and there's no subscription.
+It's a **Mac app** (and can also run in Google Chrome for testing). There's no subscription.
 
 ---
 
 ## Running a Sunday (for volunteers)
 
-1. Open **Google Chrome** and open **NC Kids Presenter** from the bookmarks bar.
-2. If you see **Open "NC Kids Library"**, click it.
-3. Click **Start TV**. A window opens on the TV. Move the mouse over to the TV and click **"Click here to fill the TV screen"** once.
-4. Pick today's playlist at the top left. The whole playlist appears in the middle, one item after another, so you can scroll through everything.
-5. Press **Next** (or **→**, **Space** or the clicker) to go forward and **←** to go back. You can also click any slide to put it on the TV, or click an item on the left to jump to it. Next then starts that item.
+1. Open **NC Kids Presenter** from the Dock.
+2. Click **Start TV**. The TV shows the presentation full screen by itself.
+3. Pick today's playlist at the top left. The whole playlist appears in the middle, one item after another, so you can scroll through everything.
+4. Press **Next** (or **→**, **Space** or the clicker) to go forward and **←** to go back. You can also click any slide to put it on the TV, or click an item on the left to jump to it. Next then starts that item.
 
 | Key | What it does |
 |---|---|
@@ -72,36 +71,37 @@ If you download lyrics from **CCLI SongSelect** as a `.txt` file, use **Import .
 
 ## First-time setup on the classroom Mac
 
-1. Install **Google Chrome** if it isn't there already.
-2. Download this project from GitHub (**Code → Download ZIP**, or use the latest release) and put the folder somewhere permanent, e.g. `Documents/NCKIDS`.
-3. Open `index.html` in Chrome (drag it onto the Chrome window), then **bookmark it** (⌘D) and show the bookmarks bar.
-4. Create an empty folder for the library, ideally in **iCloud Drive** or Dropbox so it's backed up. Name it something like `NC Kids Library`. Then click **Choose library folder…** and pick it. When Chrome asks, choose **Allow on every visit** (or **Allow**).
-5. Click **Start TV** with the TV plugged in. Chrome will ask to *manage windows on all your displays*. Click **Allow** so the TV window opens on the TV by itself. If Chrome blocks the pop-up, click the icon in the address bar and choose **Always allow pop-ups**.
-6. **Sound:** connect the TV by HDMI and choose the TV in **Control Center → Sound** on the Mac. (Or go to **Build → Settings → TV sound → Find speakers…** and pick the TV there.)
+1. **Download the app.** On GitHub, open **Releases**, pick the newest version, and download `NC-Kids-Presenter-…-mac.dmg`. (Every build is also under **Actions** → the latest "Mac app" run → **Artifacts**.)
+2. Open the `.dmg` and drag **NC Kids Presenter** into **Applications**.
+3. **The first time only:** open it from Applications. macOS will say it can't check the app for malicious software, because the church hasn't paid for an Apple developer certificate. Click **Done**, then go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to NC Kids Presenter. From then on it opens normally. Right-click the Dock icon → Options → **Keep in Dock**.
+4. **Choose the library folder.** Make an empty folder, ideally in **iCloud Drive** or Dropbox so it's backed up (e.g. `NC Kids Library`), and pick it when the app asks. If you were already using the browser version, pick the same folder: everything is already there.
+5. Plug in the TV and click **Start TV**: the presentation fills the TV by itself. If the TV is plugged in after, the TV window moves onto it on its own.
+6. **Sound:** choose the TV in **Control Center → Sound** on the Mac, or in the app under **Build → Settings → TV and sound → Find speakers…**. The first time, macOS asks about the microphone; that's only how the app learns speaker names. Nothing is recorded.
 7. Add your church's **CCLI License #** and a **logo** in Build → Settings (the CCLI and Logo sections).
-   Present mode is dark and Build mode is light by default. Change either one, and the accent color, in **Settings → Appearance**.
-8. **Planning Center (optional):** in Build → Settings → Planning Center, follow the three steps to paste in an access token, then click **Save and test**. Use a Planning Center login made just for the classroom with **Services: Viewer** access only, because the token can see everything its login can. The token is stored only in Chrome on that Mac.
+   Present mode is dark and Build mode is light by default; change either, and the accent color, in **Settings → Appearance**.
+8. **Planning Center:** in Build → Settings → Planning Center, paste the access token from the NCKids Classroom login, then **Save and test**. In the Mac app the token is encrypted with the Mac Keychain.
 
-> The library folder is the important part. The app itself can be re-downloaded at any time, but songs, lessons, videos and playlists only live in that folder.
+> The library folder is the important part. The app can be re-downloaded at any time, but songs, lessons, videos and playlists only live in that folder.
 
----
+**Running it in Chrome instead (for testing):** download the project, open `index.html` in Google Chrome, and choose the library folder. Everything works except the Planning Center import (Planning Center doesn't allow browser pages to connect), and the TV window needs one click to fill the screen.
 
 ## If something goes wrong
 
-- **Nothing on the TV:** check the TV button says *TV is on*. If not, click it. If the TV window ended up on the laptop screen, drag it onto the TV and click "fill the TV screen".
+- **Nothing on the TV:** check the TV button says *TV is on*. If not, click it. If the TV window ended up on the laptop screen, check the TV is plugged in, then close and start the TV again.
+- **"NC Kids Presenter is damaged" or "can't be opened":** see First-time setup, step 3 (Open Anyway). If it still won't open, download it again from Releases.
 - **Video has no sound on the TV:** Control Center → Sound → choose the TV. Then check Build → Settings → TV sound.
 - **"Open library" doesn't appear, or the library is empty:** Build → Settings → *Switch to a different folder…* and pick the library folder again.
 - **The playlist list got messed up:** inside the library folder, `backups/` has a dated copy of the list (`library-YYYY-MM-DD.json`). Close the app, copy the copy you want over `library.json`, and reopen.
-- **Planning Center says it "couldn't reach Planning Center":** check the internet connection. If the internet works, Planning Center may not be letting this page connect directly. Tell whoever maintains the app (see docs/MAINTAINING.md → Planning Center).
+- **Planning Center says it "couldn't reach Planning Center":** check the internet connection. In the Chrome version this is expected (see above); use the Mac app.
 - **A new version of the app broke something:** see "Going back to an older version" below.
 
 ## Going back to an older version
 
-Every version that's been used in the classroom is saved as a **Release** on GitHub (v0.1.0, v0.2.0…).
+Every version is saved as a **Release** on GitHub (v1.0.0, v1.1.0…), each with its own Mac installer.
 
-1. On GitHub, open **Releases**, find the last version that worked, and download its **Source code (zip)**.
-2. Unzip it and replace the app folder on the Mac with it (same location, so the bookmark still works).
-3. Reload Chrome. Your library is untouched, because it lives in its own folder.
+1. On GitHub, open **Releases**, find the last version that worked, and download its `.dmg`.
+2. Quit the app, drag the older NC Kids Presenter into Applications (replace the current one), and open it.
+3. Your library is untouched, because it lives in its own folder.
 
 ---
 
