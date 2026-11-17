@@ -3,6 +3,14 @@
 Plain-English notes on what changed in each version. Newest first.
 Version numbers: **major.minor.fix**. A new minor number means new features, and a new fix number means bug fixes only.
 
+## v0.6.0 — countdown timers (November 2026)
+
+- **Timers in Present mode:** one click starts a countdown on the TV, shown big over the moving background. Six are ready to go: Class starts soon (5 min), Cleanup time (3), Game time (2), Activity time (10), Discussion time (5) and Quiet time (1). **Custom** starts any length with your own name.
+- While a timer runs: **Pause / Resume**, **+1 min**, **Restart** and **Stop**, with a progress bar and time left. The last 10 seconds turn yellow. At zero the TV shows a message ("Time's up!") and a soft chime plays through the TV speakers.
+- **Timers in playlists:** add a timer like any song or lesson. "Class starts soon" is set to move on to the next item by itself at zero (after showing "Let's begin!" for a few seconds).
+- **Settings → Timers:** rename timers, change their length, the message at zero, the chime, and whether they move on in a playlist. Add your own, or put back the standard ones.
+- After a timer, Next carries on with the playlist where you left off.
+
 ## v0.5.0 — more control over songs (November 2026)
 
 - **Slides view for songs:** see a song as its actual slides, grouped by part. Hover between two lines for **Split here** to start a new slide, or use **Merge** where two slides meet to join them. Click any words to fix them right on the slide. Once you split or merge, the song keeps your breaks, and **Let the app split them again** undoes that.
