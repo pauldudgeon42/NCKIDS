@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - run: npm install --no-audit --no-fund
       - name: Start the app and run its self-check
         run: xvfb-run -a npx electron . --smoke-test --no-sandbox
@@ -36,12 +36,21 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - run: npm install --no-audit --no-fund
       - name: Build the Mac installer
         run: npx electron-builder --mac --universal --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          # The app gets a free "ad-hoc" signature (no Apple account, no secrets involved).
+          # Apple Silicon Macs refuse to open apps with no signature at all.
+          CSC_FOR_PULL_REQUEST: true
+      - name: Check the app's signature
+        run: |
+          APP="dist/mac-universal/NC Kids Presenter.app"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv "$APP" 2>&1 | grep -E "Signature|Identifier|Format"
+          lipo -archs "$APP/Contents/MacOS/NC Kids Presenter"
       - uses: actions/upload-artifact@v4
         with:
           name: NC-Kids-Presenter-mac
