@@ -3,6 +3,15 @@
 Plain-English notes on what changed in each version. Newest first.
 Version numbers: **major.minor.fix**. A new minor number means new features, and a new fix number means bug fixes only.
 
+## v1.2.0: phone remote (November 2026)
+
+- **Run the slides from a phone** on the classroom Wi-Fi. Click **Phone** at the top of the Mac app, scan the QR code or type the 4-digit code, and the phone becomes a remote in its web browser. Nothing to install.
+  - **Remote:** what's on the TV (with a Live tag), what's up next, a big Next button, and Back / Clear / Black / Logo. Timer and video controls appear when needed.
+  - **Playlist:** done / now / up next. Tap an item to see its slides and tap a slide to show it. Switch playlists.
+  - **Backgrounds** and **Timers**, the same as on the Mac.
+- Only phones with the code can control the TV. More than one phone can connect, **New code** disconnects them all, and the code changes every time the remote is turned on.
+- The phone's screen stays on while the remote is open, and the phone follows the Mac's Present theme and accent color.
+
 ## v1.1.0 — import plans from Planning Center (November 2026)
 
 - **Import a plan:** Playlists → **Import a plan from Planning Center**. It picks the **NCKids Sunday Morning** service type (or any other), shows the upcoming and recent plans, and previews what will come across before importing:

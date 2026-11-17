@@ -16,6 +16,9 @@ js/pco.js           reads songs + arrangements (lyrics, order) from the Planning
 js/app.js           all the screens and buttons
 desktop/main.js     the Mac app: windows, TV placement, library on disk (nclib://), Planning Center bridge, Keychain token, self-check
 desktop/preload.js  what the page may ask the Mac app to do (window.NCDesktop)
+desktop/remote-server.js  the phone remote's web server (plain Node, no packages)
+remote/             the phone remote page (index.html, remote.js, remote.css)
+js/qr.js            QR code maker for the pairing link
 package.json        Mac app settings for Electron and electron-builder
 .github/workflows/  GitHub Actions: self-check + Mac installer build on every change
 build/icon.png      the app icon
@@ -67,6 +70,16 @@ The app isn't notarized by Apple (that needs a paid Apple Developer account), so
 - Re-importing: playlists keep `pco.planId`. Lessons remember a key made of their attachments' ids and update times, and videos remember `pco.attachmentId`, so unchanged files are reused rather than downloaded again.
 - `tests/plan-import-test.js` runs the whole flow against a fake Planning Center.
 
+### Phone remote
+
+- `desktop/remote-server.js` is a plain Node `http` server (no packages), started from the **Phone** window. It listens on port 8765 (or the next free one) on every network interface.
+- **Pairing:** a 4-digit code plus a random key in the QR link (`#p=…`). Pairing gives the phone a random token, kept in its browser storage. Codes, keys and tokens live only in memory, so they change when the remote is turned on again or someone clicks **New code**. After 8 wrong codes, pairing pauses for a minute.
+- **Updates to phones:** Server-Sent Events (`/api/events`), chosen over WebSockets because they need no package. The page sends three kinds: `setup` (backgrounds, timers, playlists, theme), `playlist` (items and slide summaries) and `live` (what's on the TV, up next, timer, video). These are built in `publishRemote()` in `js/app.js` and sent only when they change.
+- **Commands from phones:** `POST /api/cmd` → `onRemoteCommand()` in `js/app.js`, which calls the same functions as the Mac's buttons (`step`, `goLive`, `clearLive`, `pickLiveBg`, `startTimer`…).
+- **Pictures:** `/lib/…` serves only image files from the library, to paired phones. `?w=` returns a smaller JPEG (resized with Electron's `nativeImage`).
+- The phone page uses the Wake Lock API where it's allowed and otherwise plays a tiny silent looping video (`remote/awake.mp4`), so the phone screen stays on.
+- `tests/remote-test.js` runs the real server, the app in Chrome and an iPhone-sized phone page together. The Mac app's self-check also starts the server, pairs and reads updates.
+
 ### The library folder
 
 ```
@@ -115,6 +128,7 @@ python3 -m http.server 8765 --directory ..  &
 node e2e.js                   # imports everything, builds a playlist, runs it on a "TV" window
 ```
 
+`node remote-test.js` checks the phone remote (pairing, refusing unpaired phones, Next/Back/Clear/Black, tapping slides, timers, switching playlists, New code, Turn off).
 `node plan-import-test.js` checks importing a Planning Center plan (songs with plan order, JPEG slides, PDF pages, video, headers, skipped PowerPoint, re-import without duplicates).
 `node timer-test.js` checks the countdown timers (one-click start, pause, +1 min, custom, end message, playlist auto-advance).
 `node song-editor-test.js` checks the song editor (paste cleanup, split / merge / edit, order chips, per-song look).
@@ -138,6 +152,3 @@ This app was first built with Claude (Anthropic's AI assistant). To continue tha
 
 - Countdown timer slide ("Class starts in 5:00")
 - Bible verse slides
-- A phone remote
-- Standalone Mac app (wrap these same files with Electron. Nothing needs rewriting.)
-- Pulling playlists from Planning Center

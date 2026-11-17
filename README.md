@@ -30,6 +30,14 @@ The box marked **On the TV** always shows exactly what the kids are seeing. On t
 
 When a video finishes, the screen fades back to the moving background on its own.
 
+**Running it from a phone:** click **Phone** at the top of the Mac app, then **Turn on phone remote**. Point the phone's camera at the QR code and tap the link, or type the address shown into the phone's browser and enter the 4-digit code. Nothing to install. The phone must be on the **same Wi-Fi** as the Mac.
+- **Remote:** what's on the TV, what's up next, a big **Next** button, and Back / Clear / Black / Logo. Timer and video controls appear when one is running.
+- **Playlist:** done / now / up next. Tap an item to see its slides, and tap a slide to put it on the TV. You can switch playlists here too.
+- **Backgrounds** and **Timers** work like the ones on the Mac.
+- More than one phone can connect. **New code** disconnects all of them. The remote turns off when the app quits, and the code changes each time.
+- The phone keeps its screen on while the remote is open.
+- The first time, the Mac may ask whether NC Kids Presenter can accept incoming network connections. Click **Allow**.
+
 ---
 
 ## Getting ready for a lesson (for the person who preps)
@@ -95,6 +103,7 @@ If you download lyrics from **CCLI SongSelect** as a `.txt` file, use **Import .
 - **"Open library" doesn't appear, or the library is empty:** Build → Settings → *Switch to a different folder…* and pick the library folder again.
 - **The playlist list got messed up:** inside the library folder, `backups/` has a dated copy of the list (`library-YYYY-MM-DD.json`). Close the app, copy the copy you want over `library.json`, and reopen.
 - **Planning Center says it "couldn't reach Planning Center":** check the internet connection. In the Chrome version this is expected (see above); use the Mac app.
+- **The phone says "Can't reach the Mac":** check the app is open, the phone remote is on (the **Phone** button is highlighted), and the phone is on the classroom Wi-Fi rather than mobile data. If the Mac said no to incoming connections, turn it back on in System Settings → Network → Firewall → Options.
 - **A new version of the app broke something:** see "Going back to an older version" below.
 
 ## Going back to an older version
