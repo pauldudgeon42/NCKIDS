@@ -72,6 +72,12 @@ The app isn't notarized by Apple (that needs a paid Apple Developer account), so
 - Re-importing: playlists keep `pco.planId`. Lessons remember a key made of their attachments' ids and update times, and videos remember `pco.attachmentId`, so unchanged files are reused rather than downloaded again.
 - `tests/plan-import-test.js` runs the whole flow against a fake Planning Center.
 
+### When the Mac build is stuck "waiting for a runner"
+
+GitHub sometimes has no Mac machines free, and the build-mac job waits and then gets cancelled. Two ways around it:
+- **Actions → Mac app → Run workflow:** pick the branch, and either choose the other Mac machine type, or tick **backup_build**. The backup builds the Apple Silicon app on Linux and signs it with rcodesign. It shows up as **NC-Kids-Presenter-mac-arm64-backup**, a .zip: unzip it and drag the app into Applications.
+- To change the default machine type, set the repository variable `MAC_RUNNER` to `macos-latest` or `macos-15-intel`.
+
 ### Things that work in Chrome but not in the Mac app
 
 - **`window.prompt()` doesn't exist in Electron.** It returns null without showing anything. Use `askText()` in `js/app.js` (the app's own pop-up). `alert()` and `confirm()` do work. `tests/e2e.js` makes `prompt()` throw, so a new one gets caught.
