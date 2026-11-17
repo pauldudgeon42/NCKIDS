@@ -58,6 +58,15 @@ Without `NCDesktop` (plain Chrome) everything falls back to the browser behavior
 
 The app isn't notarized by Apple (that needs a paid Apple Developer account), so the first launch on each Mac needs **System Settings → Privacy & Security → Open Anyway**. If the church gets an Apple Developer account later, add the certificate as GitHub secrets (`CSC_LINK`, `CSC_KEY_PASSWORD`) and turn on notarization in `package.json`. Then the warning goes away and automatic updates become possible.
 
+### Planning Center plan import
+
+`openPlanImport()` / `analyzePlan()` / `importPlan()` in `js/app.js`, with `PCO.serviceTypes()`, `plans()`, `planItems()`, `itemAttachments()` and `downloadAttachment()` in `js/pco.js`.
+
+- Each plan item becomes something: song items become songs (matched by `pco.songId`, created from the plan's arrangement if new). A custom song order in the plan is stored on the playlist item as `arrangement`. Headers become `label` items. Other items' attachments become a lesson (images + PDF pages, sorted by filename) and/or videos.
+- Downloads: `POST {attachment}/open` returns a short-lived `attachment_url`. The Mac app saves it straight into the library (`NCDesktop.http.request` with `download` + `saveTo`). PDFs are rendered to JPEGs with PDF.js (`vendor/pdfjs`, Apache-2.0).
+- Re-importing: playlists keep `pco.planId`. Lessons remember a key made of their attachments' ids and update times, and videos remember `pco.attachmentId`, so unchanged files are reused rather than downloaded again.
+- `tests/plan-import-test.js` runs the whole flow against a fake Planning Center.
+
 ### The library folder
 
 ```
@@ -82,7 +91,7 @@ media/logo-<id>.png
   lessons:     [{ id, title, slides: [{ id, path, name }], thumb }],
   videos:      [{ id, title, path, thumb, duration }],
   backgrounds: [{ id, title, type: 'video'|'image', path, thumb }],
-  playlists:   [{ id, title, date, items: [{ id, type: 'song'|'lesson'|'video'|'background'|'timer', ref, background? }] }],
+  playlists:   [{ id, title, date, pco?, items: [{ id, type: 'song'|'lesson'|'video'|'background'|'timer'|'label', ref, title? (labels), background?, arrangement? }] }],
   timers:      [{ id, title, seconds, message, chime, autoNext }],   // countdowns; standard set in store.js defaultTimers()
   settings:    { font, textColor, maxFontSize, uppercase, shadow, linesPerSlide, defaultBackground, ccliLicense, showCcliFooter, logo, audioDeviceId, ... }
 }
@@ -106,6 +115,7 @@ python3 -m http.server 8765 --directory ..  &
 node e2e.js                   # imports everything, builds a playlist, runs it on a "TV" window
 ```
 
+`node plan-import-test.js` checks importing a Planning Center plan (songs with plan order, JPEG slides, PDF pages, video, headers, skipped PowerPoint, re-import without duplicates).
 `node timer-test.js` checks the countdown timers (one-click start, pause, +1 min, custom, end message, playlist auto-advance).
 `node song-editor-test.js` checks the song editor (paste cleanup, split / merge / edit, order chips, per-song look).
 `node pco-test.js` checks the Planning Center import against a fake Planning Center (no real account needed).

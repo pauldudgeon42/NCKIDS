@@ -3,6 +3,20 @@
 Plain-English notes on what changed in each version. Newest first.
 Version numbers: **major.minor.fix**. A new minor number means new features, and a new fix number means bug fixes only.
 
+## v1.1.0 — import plans from Planning Center (November 2026)
+
+- **Import a plan:** Playlists → **Import a plan from Planning Center**. It picks the **NCKids Sunday Morning** service type (or any other), shows the upcoming and recent plans, and previews what will come across before importing:
+  - **Songs** come in with their SongSelect lyrics. If the plan sets its own song order, the playlist uses it. Songs already in the library are reused, not changed.
+  - **Items with slide pictures** (JPEG/PNG) become a lesson, in order (Slide 2 before Slide 10).
+  - **Attached PDFs** become slides, one per page.
+  - **Attached videos** become videos (MP4 works best).
+  - **Headers** (like "Worship" or "Lesson") become section labels.
+  - PowerPoint/Keynote files are skipped with a note to export them as JPEG or PDF.
+- **Update from Planning Center** on an imported playlist brings in changes to the plan. Slides and videos that haven't changed aren't downloaded again.
+- **Section labels** can also be added by hand (Playlists → **Section label**). They show as headings in Present mode and are skipped by Next.
+- **Lessons → From a PDF…** turns any PDF into a lesson, one slide per page.
+- Playlist numbers no longer count section labels.
+
 ## v1.0.0 — the Mac app (November 2026)
 
 - **NC Kids Presenter is now a Mac app.** Download the installer from GitHub Releases, drag it to Applications, and open it from the Dock. No more Chrome bookmark.

@@ -1,7 +1,7 @@
 {
   "name": "nckids-presenter",
   "productName": "NC Kids Presenter",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Presentation app for the NC Kids classroom: songs, lessons, videos and timers on the TV.",
   "main": "desktop/main.js",
   "author": "North Coast Family Fellowship",
