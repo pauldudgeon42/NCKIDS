@@ -37,4 +37,14 @@ contextBridge.exposeInMainWorld('NCDesktop', {
     remove: (key) => ipcRenderer.sendSync('secret:remove', key),
   },
   tvStatus: () => ipcRenderer.invoke('tv:status'),
+  /** Phone remote (desktop/remote-server.js). */
+  remote: {
+    status: () => ipcRenderer.invoke('remote:status'),
+    start: () => ipcRenderer.invoke('remote:start'),
+    stop: () => ipcRenderer.invoke('remote:stop'),
+    newCode: () => ipcRenderer.invoke('remote:newCode'),
+    publish: (kind, data) => ipcRenderer.send('remote:publish', kind, data),
+    onCommand: (cb) => ipcRenderer.on('remote:cmd', (e, cmd) => cb(cmd)),
+    onStatus: (cb) => ipcRenderer.on('remote:status', (e, st) => cb(st)),
+  },
 });

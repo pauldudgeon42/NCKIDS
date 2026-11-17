@@ -7,15 +7,17 @@
  *   - opens the TV window full screen on the TV automatically
  *   - talks to Planning Center from here, where the browser's CORS rule doesn't apply
  *   - keeps the Planning Center token encrypted with the Mac Keychain (safeStorage)
+ *   - runs the phone remote's little web server on the classroom Wi-Fi (desktop/remote-server.js)
  *
  * Start it with `npm start`. `npm run smoke` runs the self-check used by GitHub Actions.
  */
-const { app, BrowserWindow, protocol, net, ipcMain, dialog, screen, shell, session, safeStorage } = require('electron');
+const { app, BrowserWindow, protocol, net, ipcMain, dialog, screen, shell, session, safeStorage, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsp = require('fs/promises');
 const { pathToFileURL } = require('url');
 const { Readable } = require('stream');
+const { createRemoteServer } = require('./remote-server');
 
 const APP_ROOT = path.join(__dirname, '..');
 const SMOKE = process.argv.includes('--smoke-test');
@@ -284,6 +286,12 @@ function registerIpc() {
     e.returnValue = true;
   });
 
+  // ----- phone remote -----
+  ipcMain.handle('remote:status', () => remote.status());
+  ipcMain.handle('remote:start', () => remote.start(8765));
+  ipcMain.handle('remote:stop', () => remote.stop());
+  ipcMain.handle('remote:newCode', () => remote.newCode());
+  ipcMain.on('remote:publish', (e, kind, data) => { if (['setup', 'playlist', 'live'].includes(kind)) remote.publish(kind, data); });
   ipcMain.handle('app:info', () => ({ version: app.getVersion(), platform: process.platform, smoke: SMOKE }));
   ipcMain.handle('tv:status', () => ({ open: !!tvWindow, onTv: !!externalDisplay() }));
 }
@@ -293,6 +301,22 @@ function grantPermissions() {
   session.defaultSession.setPermissionRequestHandler((wc, permission, cb) => cb(allowed.has(permission)));
   session.defaultSession.setPermissionCheckHandler((wc, permission) => allowed.has(permission));
 }
+
+// ---------- phone remote ----------
+const remote = createRemoteServer({
+  root: path.join(APP_ROOT, 'remote'),
+  libraryPath: () => libraryPath,
+  // Smaller pictures for the phone (lesson slides are full size in the library).
+  thumbnail: async (file, width) => {
+    const img = nativeImage.createFromPath(file);
+    if (img.isEmpty()) return null;
+    const size = img.getSize();
+    return (size.width > width ? img.resize({ width, quality: 'good' }) : img).toJPEG(78);
+  },
+  onCommand: (cmd) => { if (mainWindow) mainWindow.webContents.send('remote:cmd', cmd); },
+  onStatus: (st) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('remote:status', st); },
+});
+app.on('before-quit', () => remote.stop());
 
 // ---------- self-check for GitHub Actions ----------
 async function runSmokeTest(win) {
@@ -309,7 +333,7 @@ async function runSmokeTest(win) {
     console.log(code === 0 ? 'SMOKE TEST PASSED' : 'SMOKE TEST FAILED');
     app.exit(code);
   };
-  const timer = setTimeout(() => { results.timeout = true; done(1); }, 60000);
+  const timer = setTimeout(() => { results.timeout = true; done(1); }, 90000);
   try {
     await new Promise((r) => win.webContents.once('did-finish-load', r));
     await new Promise((r) => setTimeout(r, 2500));
@@ -339,9 +363,37 @@ async function runSmokeTest(win) {
       Output.close();
       return r;
     })()`));
+    // Phone remote: start it, pair with the code, open the page, send a command, see the page's updates.
+    try {
+      const st = await js(`NCDesktop.remote.start()`);
+      await new Promise((res) => setTimeout(res, 600));
+      const base = `http://127.0.0.1:${st.port}`;
+      results.remotePage = /NC Kids Remote/.test(await (await fetch(base + '/')).text());
+      const bad = await fetch(base + '/api/pair', { method: 'POST', body: JSON.stringify({ code: 'xxxx' }) });
+      const pair = await (await fetch(base + '/api/pair', { method: 'POST', body: JSON.stringify({ code: st.code }) })).json();
+      results.remotePaired = bad.status === 403 && !!pair.token;
+      results.remoteRefused = (await fetch(base + '/api/cmd', { method: 'POST', body: JSON.stringify({ t: 'nope', cmd: 'next' }) })).status === 401;
+      results.remoteCmd = (await fetch(base + '/api/cmd', { method: 'POST', body: JSON.stringify({ t: pair.token, cmd: 'hello' }) })).status === 200;
+      const ctl = new AbortController();
+      const ev = await fetch(`${base}/api/events?t=${pair.token}`, { signal: ctl.signal });
+      const reader = ev.body.getReader();
+      let text = '';
+      const until = Date.now() + 4000;
+      while (!/event: live/.test(text) && Date.now() < until) {
+        const { value, done } = await Promise.race([reader.read(), new Promise((res) => setTimeout(() => res({}), 1000))]);
+        if (done) break;
+        if (value) text += Buffer.from(value).toString('utf8');
+      }
+      ctl.abort();
+      results.remoteEvents = /event: setup/.test(text) && /event: live/.test(text);
+      results.remoteStatus = (await js(`NCApp._R.status.phones`)) === 1;
+      await js(`NCDesktop.remote.stop()`);
+    } catch (e) { results.remoteError = String((e && e.stack) || e); }
     const ok = results.desktop && results.libraryOpen && results.readBack === 'hello library' && results.served === 'hello library' &&
       results.rangeStatus === 206 && results.rangeText === 'library' && results.libraryJson && results.removed && results.secretRoundTrip &&
-      results.tvOpen && results.setupHidden && results.pdfPages === 1 && errors.length === 0;
+      results.tvOpen && results.setupHidden && results.pdfPages === 1 &&
+      results.remotePage && results.remotePaired && results.remoteRefused && results.remoteCmd && results.remoteEvents && results.remoteStatus &&
+      errors.length === 0;
     clearTimeout(timer);
     done(ok ? 0 : 1);
   } catch (e) {
