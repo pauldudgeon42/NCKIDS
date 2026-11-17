@@ -17,8 +17,23 @@
   const API = 'https://api.planningcenteronline.com/services/v2';
   const KEY = 'nckids.pco';
 
+  // In the Mac app the token is kept encrypted with the Mac Keychain; in Chrome, in this browser only.
+  const DESK = window.NCDesktop;
   function loadCreds() {
-    try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { return null; }
+    try { return JSON.parse((DESK ? DESK.secrets.get(KEY) : localStorage.getItem(KEY)) || 'null'); } catch (e) { return null; }
+  }
+  function storeCreds(value) {
+    if (DESK) { if (value) DESK.secrets.set(KEY, value); else DESK.secrets.remove(KEY); }
+    else if (value) localStorage.setItem(KEY, value); else localStorage.removeItem(KEY);
+  }
+
+  /** fetch() for Planning Center: through the Mac app when there is one (no browser CORS block). */
+  async function pcoFetch(url, headers, opts = {}) {
+    if (DESK) {
+      const r = await DESK.http.request(url, Object.assign({ headers }, opts));
+      return { ok: r.ok, status: r.status, saved: r.saved, headers: { get: (h) => (h.toLowerCase() === 'retry-after' ? r.retryAfter : null) }, json: async () => JSON.parse(r.text || 'null') };
+    }
+    return fetch(url, { headers, method: opts.method || 'GET', body: opts.body });
   }
 
   class PcoError extends Error {
@@ -31,10 +46,14 @@
     credentials() { return loadCreds(); },
     isConfigured() { const c = loadCreds(); return !!(c && c.appId && c.secret); },
     saveCredentials(appId, secret) {
-      localStorage.setItem(KEY, JSON.stringify({ appId: appId.trim(), secret: secret.trim() }));
+      storeCreds(JSON.stringify({ appId: appId.trim(), secret: secret.trim() }));
       this._songs = null;
     },
-    forget() { localStorage.removeItem(KEY); this._songs = null; },
+    forget() { storeCreds(null); this._songs = null; },
+    /** Where the token is kept, for the Settings screen. */
+    storageNote() { return DESK ? 'The token is stored only on this Mac, encrypted with the Mac Keychain. It is not saved in the library folder or backups.' : 'The token is stored only in Chrome on this Mac. It is not saved in the library folder or backups.'; },
+    auth() { const c = loadCreds(); return c ? 'Basic ' + btoa(c.appId + ':' + c.secret) : ''; },
+    fetch: pcoFetch,
 
     async get(pathOrUrl) {
       const c = loadCreds();
@@ -42,7 +61,7 @@
       const url = pathOrUrl.startsWith('http') ? pathOrUrl : API + pathOrUrl;
       let res;
       try {
-        res = await fetch(url, { headers: { Authorization: 'Basic ' + btoa(c.appId + ':' + c.secret), Accept: 'application/json' } });
+        res = await pcoFetch(url, { Authorization: 'Basic ' + btoa(c.appId + ':' + c.secret), Accept: 'application/json' });
       } catch (e) {
         throw new PcoError('Couldn’t reach Planning Center. Check the internet connection. ' +
           '(If the internet is fine, Planning Center may not allow this page to connect directly. See README → Planning Center.)', 'network');

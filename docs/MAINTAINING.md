@@ -1,6 +1,6 @@
 # Maintaining NC Kids Presenter
 
-This is for whoever looks after the code. You don't need to be a professional developer. The app is deliberately plain: HTML, CSS and JavaScript files, with **no build step, no frameworks and no `npm install`**. Edit a file, reload Chrome, and you see the change.
+This is for whoever looks after the code. You don't need to be a professional developer. The app is deliberately plain: HTML, CSS and JavaScript files with no frameworks. The same files run in Chrome (open `index.html`) and inside the **Mac app** (`desktop/`, built with Electron). To try a change quickly, edit a file and reload Chrome. To run the Mac app from the code: install Node.js, then `npm install` and `npm start`.
 
 ## How it fits together
 
@@ -14,7 +14,12 @@ js/media.js         importing backgrounds / videos / lesson images, making thumb
 js/output.js        the TV window and live preview, black/clear/logo, video controls
 js/pco.js           reads songs + arrangements (lyrics, order) from the Planning Center Services API
 js/app.js           all the screens and buttons
-tests/              automated smoke test (optional, for developers)
+desktop/main.js     the Mac app: windows, TV placement, library on disk (nclib://), Planning Center bridge, Keychain token, self-check
+desktop/preload.js  what the page may ask the Mac app to do (window.NCDesktop)
+package.json        Mac app settings for Electron and electron-builder
+.github/workflows/  GitHub Actions: self-check + Mac installer build on every change
+build/icon.png      the app icon
+tests/              automated tests for the web files (optional, for developers)
 ```
 
 ### Design decisions (and why)
@@ -38,6 +43,20 @@ tests/              automated smoke test (optional, for developers)
 ### Look and themes
 
 `css/app.css` is built on color tokens (`--bg`, `--panel`, `--text`, `--accent` …) defined twice: once for `html[data-theme="light"]` and once for `html[data-theme="dark"]`. `applyTheme()` in `js/app.js` sets `data-theme` from the current mode (`settings.buildTheme` / `settings.presentTheme`) and fills in the accent colors from `ACCENTS`. When adding UI, use the tokens rather than fixed colors so both looks keep working. Icons are inline line drawings from `ICONS` / `icon(name)` in `app.js`. Please don't use emoji in the interface.
+
+### The Mac app
+
+The Mac app loads the same `index.html` from `app://local/`, and `desktop/preload.js` gives the page a `window.NCDesktop` object. Each piece of web code checks for it:
+
+- `store.js` reads and writes the library through `NCDesktop.fs` (a real folder on disk), and media is served to the page as `nclib://library/…` with byte ranges so videos can seek.
+- `pco.js` sends requests through `NCDesktop.http` (which only allows Planning Center), so the browser's CORS rule doesn't apply, and keeps the token in `NCDesktop.secrets` (encrypted with `safeStorage` / Keychain).
+- `output.js` lets the main process place the TV window: `setWindowOpenHandler` + `did-create-window` in `main.js` put it full screen on the other display.
+
+Without `NCDesktop` (plain Chrome) everything falls back to the browser behavior.
+
+**Building:** GitHub Actions (`.github/workflows/mac-app.yml`) runs `electron . --smoke-test` on Linux (it checks the library, media serving, the token and the TV window, then prints `SMOKE TEST PASSED`), then builds a universal `.dmg` on a Mac. The `.dmg` gets an ad-hoc signature, and the build fails if `codesign --verify` doesn't pass. Download it from the run's **Artifacts**. **Publishing a Release** (tag like `v1.1.0`) runs the build and attaches the installer to that Release; this is how volunteers get new versions. Bump `version` in `package.json` and `APP_VERSION` in `js/app.js` together.
+
+The app isn't notarized by Apple (that needs a paid Apple Developer account), so the first launch on each Mac needs **System Settings → Privacy & Security → Open Anyway**. If the church gets an Apple Developer account later, add the certificate as GitHub secrets (`CSC_LINK`, `CSC_KEY_PASSWORD`) and turn on notarization in `package.json`. Then the warning goes away and automatic updates become possible.
 
 ### The library folder
 

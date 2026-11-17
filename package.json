@@ -1,0 +1,38 @@
+{
+  "name": "nckids-presenter",
+  "productName": "NC Kids Presenter",
+  "version": "1.0.0",
+  "description": "Presentation app for the NC Kids classroom: songs, lessons, videos and timers on the TV.",
+  "main": "desktop/main.js",
+  "author": "North Coast Family Fellowship",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "smoke": "electron . --smoke-test",
+    "dist:mac": "electron-builder --mac --universal --publish never"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "org.ncff.nckids-presenter",
+    "productName": "NC Kids Presenter",
+    "artifactName": "NC-Kids-Presenter-${version}-mac.${ext}",
+    "files": ["index.html", "css/**", "js/**", "desktop/**", "vendor/**", "package.json"],
+    "directories": { "buildResources": "build", "output": "dist" },
+    "mac": {
+      "category": "public.app-category.education",
+      "target": [{ "target": "dmg", "arch": ["universal"] }, { "target": "zip", "arch": ["universal"] }],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "NC Kids Presenter only uses this to list speaker names, so you can send video sound to the TV. Nothing is recorded."
+      }
+    },
+    "dmg": { "title": "NC Kids Presenter" },
+    "publish": null
+  }
+}

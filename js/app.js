@@ -7,7 +7,7 @@
  * Data lives in Store.data (see store.js). Call Store.save() after changing it.
  */
 (function () {
-  const APP_VERSION = '0.6.0';
+  const APP_VERSION = '1.0.0';
 
   // ---------- small helpers ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -78,11 +78,34 @@
       input.click();
     });
   }
-  async function pickFolderFiles(filter) {
+  /**
+   * Pick a folder (e.g. a curriculum download) and get its files.
+   * Returns { folder, files: File[] } or null if cancelled. In the Mac app the files
+   * come from a native folder dialog and are copied straight from disk on import.
+   */
+  async function chooseFolder(filter) {
+    if (window.NCDesktop) {
+      const r = await NCDesktop.pickFolderFiles();
+      if (!r) return null;
+      const files = [];
+      for (const f of r.files) {
+        const probe = { name: f.name, type: f.type };
+        if (filter && !filter(probe)) continue;
+        const blob = await (await fetch(f.url)).blob();
+        const file = new File([blob], f.name, { type: f.type || blob.type });
+        file.ncPath = f.path;
+        files.push(file);
+      }
+      return { folder: r.folder, files };
+    }
     try {
       const dir = await window.showDirectoryPicker({ id: 'nckids-import', mode: 'read' });
-      return await Media.filesFromFolder(dir, filter);
+      return { folder: dir.name, files: await Media.filesFromFolder(dir, filter) };
     } catch (e) { return null; } // cancelled
+  }
+  async function pickFolderFiles(filter) {
+    const r = await chooseFolder(filter);
+    return r && r.files;
   }
 
   /** Let files be dragged in from Finder. */
@@ -1250,15 +1273,12 @@
     };
     $('#lesson-files').onclick = async () => newLesson(await pickFiles({ accept: 'image/*' }));
     $('#lesson-folder').onclick = async () => {
-      let folderName = '';
+      busy('Reading folder…');
       try {
-        const dir = await window.showDirectoryPicker({ id: 'nckids-import', mode: 'read' });
-        folderName = dir.name;
-        busy('Reading folder…');
-        const files = await Media.filesFromFolder(dir, Media.isImage);
+        const r = await chooseFolder(Media.isImage);
         busy();
-        newLesson(files, folderName);
-      } catch (e) { busy(); }
+        if (r) newLesson(r.files, r.folder);
+      } catch (e) { busy(); toast('Could not read that folder: ' + e.message, 'error'); }
     };
     $('#lesson-list').onclick = (e) => { const li = e.target.closest('li[data-id]'); if (li) { B.lesson = li.dataset.id; renderBuild(); } };
     dropZone($('#lesson-main'), async (files) => {
@@ -1521,7 +1541,7 @@
         <label>Secret<input id="pco-secret" type="password" autocomplete="off" placeholder="${PCO.isConfigured() ? '•••••••• (saved)' : ''}"></label>
       </div>
       <div class="row gap"><button class="btn primary" id="pco-save">Save and test</button>${PCO.isConfigured() ? '<button class="btn danger" id="pco-forget">Disconnect</button>' : ''}<span id="pco-test" class="small"></span></div>
-      <p class="hint">The token is stored only in Chrome on this Mac. It is not saved in the library folder or backups.</p>`;
+      <p class="hint">${PCO.storageNote()}</p>`;
     $('#pco-save').onclick = async () => {
       const appId = $('#pco-app').value.trim();
       const secret = $('#pco-secret').value.trim() || ((PCO.credentials() || {}).secret || '');

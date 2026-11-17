@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en" data-theme="light">
+<!-- In the Mac app, window.NCDesktop exists (desktop/preload.js) and the html element gets class "desktop". -->
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -43,7 +44,7 @@
           Pick that folder (or make a new empty one, such as <b>NC Kids Library</b> in iCloud Drive).</p>
         <button class="btn primary big hidden" id="reconnect">Open library</button>
         <button class="btn big" id="choose-folder">Choose library folder…</button>
-        <p class="hint">Chrome will ask to let this page edit files in that folder. Choose <b>Allow on every visit</b> if it's offered.</p>
+        <p class="hint browser-only">Chrome will ask to let this page edit files in that folder. Choose <b>Allow on every visit</b> if it's offered.</p>
       </div>
       <div id="setup-unsupported" class="hidden">
         <p><b>Please open this page in Google Chrome</b> (or Microsoft Edge). Safari and Firefox can't save to a folder yet.</p>
@@ -135,6 +136,7 @@
   <div id="busy" class="busy"><div><div class="spinner"></div><span>Working…</span></div></div>
   <div id="modal" class="modal"></div>
 
+  <script>if (window.NCDesktop) document.documentElement.classList.add('desktop');</script>
   <script src="js/store.js"></script>
   <script src="js/songs.js"></script>
   <script src="js/renderer.js"></script>
