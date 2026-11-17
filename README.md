@@ -25,6 +25,8 @@ It runs in Google Chrome on the classroom Mac. Nothing needs installing and ther
 
 The box marked **On the TV** always shows exactly what the kids are seeing. On the left, finished items get a check mark, the current item is highlighted, and the next one says "up next".
 
+**Timers:** under **Timers** on the right, click one (Cleanup time, Game time…) and the countdown appears big on the TV over the background. Pause, add a minute, restart or stop it from the box that appears. At zero the TV shows "Time's up!" with a soft chime. Use **Custom** for any other length. Timers can also go in a playlist like a song. "Class starts soon" moves on to the next item by itself when it reaches zero. Change the timers in Build → Settings → Timers.
+
 **Changing the background live:** click any picture under **Backgrounds** (right side) and it fades in behind the words straight away, staying for the next songs too. Songs that were given their own background still use it. Click **↺ Song's own** to go back to normal.
 
 When a video finishes, the screen fades back to the moving background on its own.

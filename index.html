@@ -92,6 +92,26 @@
         <button class="live-btn" id="btn-black" title="Black screen (B)">Black</button>
         <button class="live-btn" id="btn-logo" title="Show logo (L)">Logo</button>
       </div>
+      <div id="timer-controls" class="video-controls timer-controls hidden">
+        <div class="row" style="justify-content:space-between"><strong id="tc-name">Timer</strong><span id="tc-time" class="vc-time"></span></div>
+        <div class="vc-track"><div id="tc-bar" class="vc-bar"></div></div>
+        <div class="row gap">
+          <button class="btn small" id="tc-pause">Pause</button>
+          <button class="btn small" id="tc-add" title="Add one minute">+1 min</button>
+          <button class="btn small" id="tc-restart">Restart</button>
+          <button class="btn small danger" id="tc-stop" title="Stop the timer and clear the TV (C)">Stop</button>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="bank">
+        <div class="bank-head"><h3>Timers</h3></div>
+        <div id="timer-bank" class="timer-bank"></div>
+        <div id="timer-custom" class="timer-custom hidden">
+          <input id="timer-custom-name" placeholder="Name (optional)" aria-label="Timer name">
+          <input id="timer-custom-min" type="number" min="0.25" step="0.25" value="5" aria-label="Minutes"><span class="muted small">min</span>
+          <button class="btn primary small" id="timer-custom-go">Start</button>
+        </div>
+      </div>
       <div class="divider"></div>
       <div class="bank">
         <div class="bank-head">

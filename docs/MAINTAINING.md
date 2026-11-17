@@ -63,7 +63,8 @@ media/logo-<id>.png
   lessons:     [{ id, title, slides: [{ id, path, name }], thumb }],
   videos:      [{ id, title, path, thumb, duration }],
   backgrounds: [{ id, title, type: 'video'|'image', path, thumb }],
-  playlists:   [{ id, title, date, items: [{ id, type: 'song'|'lesson'|'video'|'background', ref, background? }] }],
+  playlists:   [{ id, title, date, items: [{ id, type: 'song'|'lesson'|'video'|'background'|'timer', ref, background? }] }],
+  timers:      [{ id, title, seconds, message, chime, autoNext }],   // countdowns; standard set in store.js defaultTimers()
   settings:    { font, textColor, maxFontSize, uppercase, shadow, linesPerSlide, defaultBackground, ccliLicense, showCcliFooter, logo, audioDeviceId, ... }
 }
 ```
@@ -86,6 +87,7 @@ python3 -m http.server 8765 --directory ..  &
 node e2e.js                   # imports everything, builds a playlist, runs it on a "TV" window
 ```
 
+`node timer-test.js` checks the countdown timers (one-click start, pause, +1 min, custom, end message, playlist auto-advance).
 `node song-editor-test.js` checks the song editor (paste cleanup, split / merge / edit, order chips, per-song look).
 `node pco-test.js` checks the Planning Center import against a fake Planning Center (no real account needed).
 
