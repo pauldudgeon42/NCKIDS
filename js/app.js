@@ -7,7 +7,7 @@
  * Data lives in Store.data (see store.js). Call Store.save() after changing it.
  */
 (function () {
-  const APP_VERSION = '0.5.0';
+  const APP_VERSION = '0.6.0';
 
   // ---------- small helpers ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -16,7 +16,7 @@
   const D = () => Store.data;
   const S = () => Store.data.settings;
   const byId = (collection, id) => D()[collection].find((x) => x.id === id) || null;
-  const COLLECTION = { song: 'songs', lesson: 'lessons', video: 'videos', background: 'backgrounds' };
+  const COLLECTION = { song: 'songs', lesson: 'lessons', video: 'videos', background: 'backgrounds', timer: 'timers' };
   // Simple line icons (no emoji). icon('song') returns an inline SVG.
   const ICONS = {
     song: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
@@ -24,6 +24,7 @@
     video: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/>',
     background: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
     tv: '<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8"/>',
+    timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/>',
     check: '<path d="M5 12l5 5L20 7"/>',
     x: '<path d="M6 6l12 12M18 6L6 18"/>',
     grip: '<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" stroke-width="3"/>',
@@ -38,7 +39,7 @@
   function icon(name, size = 16) {
     return `<svg class="i" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
   }
-  const TYPE_NAME = { song: 'Song', lesson: 'Lesson', video: 'Video', background: 'Background' };
+  const TYPE_NAME = { song: 'Song', lesson: 'Lesson', video: 'Video', background: 'Background', timer: 'Timer' };
 
   function fmtTime(sec) {
     if (!isFinite(sec) || sec < 0) sec = 0;
@@ -160,6 +161,10 @@
     if (item.type === 'video') {
       return [{ kind: 'video', url: await Store.url(ref.path), thumb: await Store.url(ref.thumb), label: fmtTime(ref.duration), title: ref.title }];
     }
+    if (item.type === 'timer') {
+      return [{ kind: 'timer', label: fmtTime(ref.seconds), title: ref.title, timerId: ref.id, seconds: ref.seconds,
+        message: ref.message, chime: ref.chime !== false, autoNext: !!ref.autoNext, fromPlaylist: true }];
+    }
     if (item.type === 'background') {
       return [{ kind: 'background', bg: await resolveBg(ref.id), ownBg: true, label: 'Background only' }];
     }
@@ -175,6 +180,7 @@
     if (slide.kind === 'text') { r.setText(slide.text, slide.style || S()); r.setFooter(slide.footer || ''); }
     else if (slide.kind === 'image') r.setImage(slide.url);
     else if (slide.kind === 'video') r.setVideoPoster(slide.thumb);
+    else if (slide.kind === 'timer') r.setTimer({ title: slide.title, remaining: slide.seconds }, S());
     return r;
   }
 
@@ -240,6 +246,58 @@
     return resolveBg(P.liveBgId);
   }
 
+  // ----- timers -----
+  function renderTimerBank() {
+    const running = Output.timer;
+    $('#timer-bank').innerHTML = (D().timers || []).map((t) => `
+      <button class="timer-chip ${running && running.timerId === t.id ? 'on' : ''}" data-timer="${esc(t.id)}" title="Start ${esc(t.title)} on the TV">
+        <span class="t-name">${esc(t.title)}</span><span class="t-time">${fmtTime(t.seconds)}</span></button>`).join('') +
+      `<button class="timer-chip custom" id="timer-custom-btn"><span class="t-name">Custom</span><span class="t-time">${icon('plus', 14)}</span></button>`;
+  }
+  function startTimer(t, fromPlaylist) {
+    if (!fromPlaylist) {
+      if (P.live) P.last = P.live;
+      P.live = null;
+      $('#video-controls').classList.add('hidden');
+      markLive();
+    }
+    Output.show({ kind: 'timer', title: t.title, timerId: t.id, seconds: t.seconds, message: t.message || 'Time’s up!', chime: t.chime !== false, autoNext: !!t.autoNext, fromPlaylist: !!fromPlaylist });
+    updateLiveButtons();
+  }
+  function onTimerTick(t) {
+    const box = $('#timer-controls');
+    box.classList.toggle('hidden', !t);
+    $$('#timer-bank .timer-chip').forEach((c) => c.classList.toggle('on', !!t && c.dataset.timer === t.timerId));
+    if (!t) return;
+    $('#tc-name').textContent = t.title;
+    $('#tc-time').textContent = t.done ? 'Done' : fmtTime(Math.ceil(t.remaining)) + (t.paused ? ' (paused)' : ' left');
+    $('#tc-bar').style.width = t.total ? (100 * (1 - t.remaining / t.total)) + '%' : '100%';
+    $('#tc-pause').textContent = t.paused ? 'Resume' : 'Pause';
+    $('#tc-pause').disabled = !!t.done;
+  }
+  function bindTimers() {
+    $('#timer-bank').addEventListener('click', (e) => {
+      if (e.target.closest('#timer-custom-btn')) { $('#timer-custom').classList.toggle('hidden'); $('#timer-custom-min').focus(); return; }
+      const b = e.target.closest('[data-timer]');
+      if (b) { const t = byId('timers', b.dataset.timer); if (t) startTimer(t, false); }
+    });
+    $('#timer-custom-go').addEventListener('click', () => {
+      const min = Number($('#timer-custom-min').value);
+      if (!(min > 0)) { toast('Enter how many minutes.'); return; }
+      startTimer({ id: 'custom', title: $('#timer-custom-name').value.trim() || 'Timer', seconds: Math.round(min * 60), message: 'Time’s up!', chime: true }, false);
+      $('#timer-custom').classList.add('hidden');
+    });
+    $('#tc-pause').addEventListener('click', () => Output.pauseTimer());
+    $('#tc-add').addEventListener('click', () => Output.addTime(60));
+    $('#tc-restart').addEventListener('click', () => Output.restartTimer());
+    $('#tc-stop').addEventListener('click', () => clearLive());
+    Output.onTimerTick = onTimerTick;
+    Output.onTimerEnd = (t) => {
+      // A timer in the playlist set to move on: show the end message for a moment, then go to the next item.
+      if (t.fromPlaylist && t.autoNext && P.live) setTimeout(() => { if (Output.timer === t) step(1); }, 3000);
+    };
+  }
+
   function renderBank() {
     bgTiles($('#bg-bank'), currentBankId(), pickLiveBg);
     $('#bank-reset').classList.toggle('hidden', P.liveBgId === null);
@@ -290,6 +348,7 @@
     renderPresentItems();
     renderPresentSlides();
     renderBank();
+    renderTimerBank();
   }
 
   /** done / now / next, from what is live on the TV */
@@ -526,6 +585,7 @@
       markLive();
     };
     Output.onVideoError = () => toast('This video could not play. Try converting it to MP4.', 'error');
+    bindTimers();
     Output.onKey = onKey;
     document.addEventListener('keydown', onKey);
   }
@@ -627,7 +687,7 @@
       <section class="col card col-picker">
         <div class="col-head"><h2>Add to playlist</h2></div>
         <input type="search" id="pick-search" placeholder="Search everything…" value="${esc(B.search)}">
-        <div class="chips" id="pick-filter">${['all', 'song', 'lesson', 'video', 'background'].map((f) =>
+        <div class="chips" id="pick-filter">${['all', 'song', 'lesson', 'video', 'background', 'timer'].map((f) =>
           `<button class="chip ${B.pickerFilter === f ? 'active' : ''}" data-f="${f}">${f === 'all' ? 'All' : TYPE_NAME[f] + 's'}</button>`).join('')}</div>
         <ul class="list pick-list" id="pick-list"></ul>
       </section>`;
@@ -635,7 +695,7 @@
     const renderPicker = () => {
       const q = B.search.trim().toLowerCase();
       const rows = [];
-      for (const type of ['song', 'lesson', 'video', 'background']) {
+      for (const type of ['song', 'lesson', 'video', 'background', 'timer']) {
         if (B.pickerFilter !== 'all' && B.pickerFilter !== type) continue;
         for (const x of sortedBy(D()[COLLECTION[type]])) {
           if (q && !(x.title.toLowerCase().includes(q) || (type === 'song' && (x.lyrics || '').toLowerCase().includes(q)))) continue;
@@ -1317,7 +1377,7 @@
   const FONTS = ['Avenir Next', 'Helvetica Neue', 'Arial Rounded MT Bold', 'Futura', 'Gill Sans', 'Verdana', 'Chalkboard SE', 'Marker Felt', 'Noteworthy', 'Georgia'];
   const SET_SECTIONS = [
     ['appearance', 'Appearance'], ['lyrics', 'Lyrics on the TV'], ['tv', 'TV and sound'], ['logo', 'Logo'],
-    ['ccli', 'CCLI'], ['pco', 'Planning Center'], ['library', 'Library folder'],
+    ['timers', 'Timers'], ['ccli', 'CCLI'], ['pco', 'Planning Center'], ['library', 'Library folder'],
   ];
 
   function buildSettings(body) {
@@ -1330,7 +1390,7 @@
       const b = e.target.closest('[data-sec]');
       if (b) { B.setSection = b.dataset.sec; renderBuild(); }
     };
-    ({ appearance: setAppearance, lyrics: setLyrics, tv: setTv, logo: setLogo, ccli: setCcli, pco: setPco, library: setLibrary })[B.setSection]($('#set-main'), S());
+    ({ appearance: setAppearance, lyrics: setLyrics, tv: setTv, logo: setLogo, ccli: setCcli, pco: setPco, library: setLibrary, timers: setTimers })[B.setSection]($('#set-main'), S());
   }
 
   function setAppearance(el, s) {
@@ -1476,6 +1536,51 @@
       } catch (e) { out.textContent = e.message; out.className = 'small error-text'; }
     };
     if ($('#pco-forget')) $('#pco-forget').onclick = () => { if (confirm('Remove the Planning Center token from this Mac?')) { PCO.forget(); renderBuild(); toast('Planning Center disconnected.'); } };
+  }
+
+  function setTimers(el) {
+    const timers = D().timers || (D().timers = []);
+    el.innerHTML = `
+      <h1>Timers</h1>
+      <p class="lead">Countdowns a volunteer can start with one click in Present mode (under <b>Timers</b>), or add to a playlist. The time shows big on the TV over the moving background.</p>
+      <div class="timer-rows">${timers.map((t, i) => `
+        <div class="timer-row" data-i="${i}">
+          <label>Name<input data-f="title" value="${esc(t.title)}"></label>
+          <label class="mins">Minutes<input data-f="minutes" type="number" min="0.25" step="0.25" value="${+(t.seconds / 60).toFixed(2)}"></label>
+          <label>Message at zero<input data-f="message" value="${esc(t.message || '')}" placeholder="Time’s up!"></label>
+          <label class="check"><input type="checkbox" data-f="chime" ${t.chime !== false ? 'checked' : ''}> Chime</label>
+          <label class="check" title="Only when the timer is part of a playlist"><input type="checkbox" data-f="autoNext" ${t.autoNext ? 'checked' : ''}> In a playlist, go to the next item at zero</label>
+          <button class="icon-btn danger" data-del="${i}" title="Delete this timer" aria-label="Delete ${esc(t.title)}">${icon('x')}</button>
+        </div>`).join('') || '<p class="muted">No timers yet.</p>'}</div>
+      <div class="row gap"><button class="btn primary" id="timer-add">${icon('plus', 14)} Add a timer</button><button class="btn" id="timer-reset">Put back the standard timers</button></div>`;
+    el.oninput = (e) => {
+      const row = e.target.closest('.timer-row');
+      if (!row || !e.target.dataset.f) return;
+      const t = timers[Number(row.dataset.i)], f = e.target.dataset.f;
+      if (f === 'minutes') { const m = Number(e.target.value); if (m > 0) t.seconds = Math.round(m * 60); }
+      else if (f === 'chime' || f === 'autoNext') t[f] = e.target.checked;
+      else t[f] = e.target.value;
+      Store.save(); invalidateSlides();
+    };
+    el.onclick = async (e) => {
+      const d = e.target.closest('[data-del]');
+      if (d) {
+        const t = timers[Number(d.dataset.del)];
+        if (await deleteThing('timer', t.id)) renderBuild();
+        return;
+      }
+      if (e.target.closest('#timer-add')) {
+        timers.push({ id: Media.id(), title: 'New timer', seconds: 300, message: 'Time’s up!', chime: true, autoNext: false });
+        Store.save(); renderBuild();
+        setTimeout(() => { const ins = $$('.timer-row input[data-f=title]'); const last = ins[ins.length - 1]; if (last) { last.focus(); last.select(); } }, 0);
+      }
+      if (e.target.closest('#timer-reset')) {
+        const std = window.NC_DEFAULT_TIMERS();
+        let added = 0;
+        for (const t of std) if (!timers.some((x) => x.id === t.id)) { timers.push(t); added++; }
+        Store.save(); renderBuild(); toast(added ? `Added ${added} standard timer${added === 1 ? '' : 's'} back.` : 'All the standard timers are already here.');
+      }
+    };
   }
 
   function setLibrary(el) {

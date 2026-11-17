@@ -457,3 +457,27 @@ html[data-theme="dark"] .defaults-box { background: var(--panel-2); }
 .cleanup .warn { color: #B45309; }
 html[data-theme="dark"] .cleanup .warn { color: #FCD34D; }
 @media (max-width: 1250px) { .col-side { width: 300px; } .se-slide { width: 240px; } }
+
+/* ---------- timers (v0.6) ---------- */
+:root, html[data-theme="light"] { --t-timer-bg: #FEF9C3; --t-timer: #A16207; }
+html[data-theme="dark"] { --t-timer-bg: #3A3414; --t-timer: #FDE68A; }
+.t-timer { background: var(--t-timer-bg); color: var(--t-timer); }
+.timer-bank { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.timer-chip { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 46px; padding: 0 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text-2); cursor: pointer; text-align: left; }
+html[data-theme="dark"] .timer-chip { border-color: transparent; }
+.timer-chip:hover { border-color: var(--line-strong); }
+.timer-chip .t-name { font-weight: 700; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timer-chip .t-time { font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 700; color: var(--muted); display: flex; }
+.timer-chip.on { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); color: var(--accent-text); }
+.timer-chip.on .t-time { color: var(--accent-text); }
+.timer-chip.custom { border-style: dashed; background: transparent; }
+.timer-custom { display: flex; gap: 8px; align-items: center; }
+.timer-custom input:first-child { flex: 1; }
+.timer-custom input[type=number] { width: 72px !important; flex: none; }
+.timer-controls strong { font-size: 14px; }
+.timer-rows { display: flex; flex-direction: column; gap: 10px; max-width: 980px; }
+.timer-row { display: grid; grid-template-columns: 1.4fr 90px 1.2fr auto auto 34px; gap: 12px; align-items: end; padding: 12px 14px; border-radius: 16px; background: var(--panel-2); }
+.timer-row label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 700; color: var(--text-2); }
+.timer-row label.check { flex-direction: row; align-items: center; height: 40px; font-size: 13px; font-weight: 600; }
+.timer-row .icon-btn { margin-bottom: 3px; }
+.p-right > *, .p-left > * { flex-shrink: 0; }
