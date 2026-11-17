@@ -61,7 +61,9 @@ If you download lyrics from **CCLI SongSelect** as a `.txt` file, use **Import .
 
 **Songs from Planning Center (easiest):** Songs tab → **⬇ From Planning Center**. Type part of the title, click the song to check the lyrics and choose the arrangement, then **Import this song**. Or tick several songs and click **Import ticked songs**. The lyrics, song order and CCLI details all come across. If the song changes in Planning Center later, open it and click **↻ Update from Planning Center**.
 
-**Lesson slides:** Lessons tab → **+ From a folder…** and choose the lesson's JPEG folder from the curriculum download. The slides come in order (Slide 2 before Slide 10). You can also pick individual pictures, or drag them in from Finder.
+**A whole Sunday from Planning Center (easiest of all):** build the service in the **NCKids Sunday Morning** plan, attaching each lesson's slides (JPEGs or a PDF) and videos to its plan item. Then in the app: Playlists → **Import a plan from Planning Center**, pick the plan, check the preview and click **Import**. Songs, slides, videos and section headers all come across in order. If the plan changes later, open the playlist and click **Update from Planning Center**. PowerPoint files can't be imported, so export them as JPEG or PDF first.
+
+**Lesson slides:** Lessons tab → **+ From a PDF…** (one slide per page), or **+ From a folder…** and choose the lesson's JPEG folder from the curriculum download. The slides come in order (Slide 2 before Slide 10). You can also pick individual pictures, or drag them in from Finder.
 
 **Videos:** Videos tab → **Import videos…**. MP4 works best. If a video won't import, it's in a format Chrome can't play. Open it in QuickTime and use *File → Export As → 1080p* to fix it.
 

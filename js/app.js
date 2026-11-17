@@ -7,7 +7,7 @@
  * Data lives in Store.data (see store.js). Call Store.save() after changing it.
  */
 (function () {
-  const APP_VERSION = '1.0.0';
+  const APP_VERSION = '1.1.0';
 
   // ---------- small helpers ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -25,6 +25,7 @@
     background: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
     tv: '<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8"/>',
     timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/>',
+    label: '<path d="M4 7h16M4 12h16M4 17h10"/>',
     check: '<path d="M5 12l5 5L20 7"/>',
     x: '<path d="M6 6l12 12M18 6L6 18"/>',
     grip: '<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" stroke-width="3"/>',
@@ -39,7 +40,7 @@
   function icon(name, size = 16) {
     return `<svg class="i" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
   }
-  const TYPE_NAME = { song: 'Song', lesson: 'Lesson', video: 'Video', background: 'Background', timer: 'Timer' };
+  const TYPE_NAME = { song: 'Song', lesson: 'Lesson', video: 'Video', background: 'Background', timer: 'Timer', label: 'Section' };
 
   function fmtTime(sec) {
     if (!isFinite(sec) || sec < 0) sec = 0;
@@ -162,14 +163,20 @@
   function songBgId(item, song) {
     return (item && item.background) || (song && song.background) || S().defaultBackground || null;
   }
-  function refOf(item) { return byId(COLLECTION[item.type], item.ref); }
+  function refOf(item) {
+    if (item.type === 'label') return { title: item.title || 'Section' }; // section labels (e.g. Planning Center headers)
+    return byId(COLLECTION[item.type], item.ref);
+  }
   function itemTitle(item) { const r = refOf(item); return r ? r.title : '(missing — was deleted)'; }
 
   /** Slides for one playlist item, with file URLs ready to show. */
   async function slidesFor(item) {
-    const ref = refOf(item);
+    let ref = refOf(item);
     if (!ref) return [];
+    if (item.type === 'label') return [];
     if (item.type === 'song') {
+      // A playlist item can carry its own song order (e.g. the order chosen in a Planning Center plan).
+      if (item.arrangement) ref = Object.assign({}, ref, { arrangement: item.arrangement });
       const bg = await resolveBg(songBgId(item, ref));
       const ownBg = !!((item && item.background) || ref.background); // chose its own, rather than "Default"
       return Songs.buildSlides(ref, S()).map((s) => Object.assign(s, { bg, ownBg }));
@@ -374,6 +381,13 @@
     renderTimerBank();
   }
 
+  /** The number shown next to a playlist item (section labels aren't counted). */
+  function itemNumber(pl, i) {
+    let n = 0;
+    for (let k = 0; k <= i; k++) if (pl.items[k].type !== 'label') n++;
+    return n;
+  }
+
   /** done / now / next, from what is live on the TV */
   function itemState(i) {
     const cur = P.live || P.last;
@@ -390,10 +404,11 @@
     $('#present-date').textContent = pl && pl.date ? prettyDate(pl.date) : '';
     if (!pl) { ol.innerHTML = ''; return; }
     ol.innerHTML = pl.items.map((it, i) => {
+      if (it.type === 'label') return `<li class="p-label" data-label="${i}">${esc(it.title || 'Section')}</li>`;
       const st = itemState(i);
       const sub = TYPE_NAME[it.type] + (st === 'now' ? ' · on the TV now' : st === 'next' ? ' · up next' : '');
       return `<li class="p-item ${st} ${P.cued === i ? 'cued' : ''}" data-i="${i}">
-        <span class="badge-n">${st === 'done' ? icon('check', 15) : i + 1}</span>
+        <span class="badge-n">${st === 'done' ? icon('check', 15) : itemNumber(pl, i)}</span>
         <span class="txt"><span class="name">${esc(itemTitle(it))}</span><span class="sub">${sub}</span></span>
       </li>`;
     }).join('') || '<li class="muted pad">This playlist is empty. Add things to it in Build → Playlists.</li>';
@@ -432,10 +447,17 @@
     wrap.innerHTML = '';
     pl.items.forEach((it, i) => {
       const { slides, bgs } = all[i];
+      if (it.type === 'label') {
+        const div = document.createElement('div');
+        div.className = 'p-divider'; div.id = 'sec-' + i;
+        div.innerHTML = `<span>${esc(it.title || 'Section')}</span>`;
+        wrap.appendChild(div);
+        return;
+      }
       const sec = document.createElement('section');
       sec.className = 'p-section';
       sec.id = 'sec-' + i;
-      sec.innerHTML = `<div class="p-sec-head"><span class="num">${i + 1}</span><h2>${esc(itemTitle(it))}</h2>
+      sec.innerHTML = `<div class="p-sec-head"><span class="num">${itemNumber(pl, i)}</span><h2>${esc(itemTitle(it))}</h2>
         <span class="type-pill t-${it.type}">${icon(it.type, 14)} ${TYPE_NAME[it.type]}</span>
         <span class="count">${slides.length} slide${slides.length === 1 ? '' : 's'}</span></div>
         <div class="slide-grid"></div>`;
@@ -678,7 +700,8 @@
     const pl = byId('playlists', B.playlist);
     body.innerHTML = `
       <section class="col card col-list">
-        <div class="col-head"><h2>Playlists</h2><button class="btn primary" id="pl-new">+ New</button></div>
+        <div class="col-head"><h2>Playlists</h2><button class="btn primary small" id="pl-new">${icon('plus', 14)} New</button></div>
+        <button class="btn small" id="pl-import" title="Make a playlist from a Planning Center plan, with its songs, slides and videos">${icon('download', 14)} Import a plan from Planning Center</button>
         <ul class="list" id="pl-list">${lists.map((p) => `
           <li class="${p.id === B.playlist ? 'selected' : ''}" data-id="${p.id}">
             <strong>${esc(p.title)}</strong><small>${esc(prettyDate(p.date))} · ${p.items.length} item${p.items.length === 1 ? '' : 's'}</small>
@@ -693,14 +716,19 @@
         <div class="row gap">
           <button class="btn primary" id="pl-present">${icon('play', 14)} Present this playlist</button>
           <button class="btn" id="pl-dup">Duplicate</button>
+          <button class="btn" id="pl-label" title="Add a heading like “Worship” or “Lesson” to break up the playlist">${icon('plus', 14)} Section label</button>
+          ${pl.pco ? `<button class="btn" id="pl-pco-update" title="Bring in changes made to this plan in Planning Center">${icon('refresh', 14)} Update from Planning Center</button>` : ''}
           <button class="btn danger" id="pl-del">Delete</button>
         </div>
+        ${pl.pco ? `<p class="hint" style="margin:0"><span class="pco-tag">From Planning Center</span> ${esc(pl.pco.dates || '')}</p>` : ''}
         <p class="hint">Drag items to reorder. Add things from the list on the right.</p>
         <ol class="pl-items" id="pl-items">${pl.items.map((it, i) => `
           <li draggable="true" data-index="${i}">
             <span class="grip">${icon('grip', 18)}</span>
             <span class="icon t-${it.type}">${icon(it.type)}</span>
-            <span class="name">${esc(itemTitle(it))}<small>${TYPE_NAME[it.type]}</small></span>
+            ${it.type === 'label'
+              ? `<span class="name"><input class="label-input" data-label="${i}" value="${esc(it.title || '')}" aria-label="Section label"><small>Section label</small></span>`
+              : `<span class="name">${esc(itemTitle(it))}<small>${TYPE_NAME[it.type]}${it.arrangement ? ' · order from the plan' : ''}</small></span>`}
             ${it.type === 'song' ? `<label class="bg-pick">Background <select data-bg="${i}">${bgOptions(it.background || '', { defaultLabel: 'Song’s own' })}</select></label>` : ''}
             <button class="icon-btn" data-up="${i}" title="Move up" aria-label="Move up">${icon('up')}</button>
             <button class="icon-btn" data-down="${i}" title="Move down" aria-label="Move down">${icon('down')}</button>
@@ -736,6 +764,7 @@
       D().playlists.push(p); B.playlist = p.id; Store.save(); renderBuild();
       setTimeout(() => { const t = $('#pl-title'); if (t) { t.focus(); t.select(); } }, 0);
     };
+    $('#pl-import').onclick = () => openPlanImport();
     $('#pl-list').onclick = (e) => { const li = e.target.closest('li[data-id]'); if (li) { B.playlist = li.dataset.id; renderBuild(); } };
     $('#pick-search').oninput = (e) => { B.search = e.target.value; renderPicker(); };
     $('#pick-filter').onclick = (e) => { const b = e.target.closest('[data-f]'); if (b) { B.pickerFilter = b.dataset.f; $$('#pick-filter .chip').forEach((c) => c.classList.toggle('active', c === b)); renderPicker(); } };
@@ -775,6 +804,9 @@
       else return;
       Store.save(); invalidateSlides(); renderBuild();
     };
+    itemsEl.oninput = (e) => {
+      if (e.target.dataset.label !== undefined) { pl.items[Number(e.target.dataset.label)].title = e.target.value; Store.save(); invalidateSlides(); }
+    };
     itemsEl.onchange = (e) => {
       if (e.target.dataset.bg !== undefined) { pl.items[Number(e.target.dataset.bg)].background = e.target.value; Store.save(); invalidateSlides(); }
     };
@@ -786,6 +818,13 @@
       const copy = { id: Media.id(), title: pl.title + ' (copy)', date: nextSunday(), items: pl.items.map((it) => Object.assign({}, it, { id: Media.id() })) };
       D().playlists.push(copy); B.playlist = copy.id; Store.save(); renderBuild();
     };
+    $('#pl-label').onclick = () => {
+      const title = prompt('Section label (for example “Worship” or “Lesson”):', 'Worship');
+      if (!title) return;
+      pl.items.push({ id: Media.id(), type: 'label', title: title.trim() });
+      Store.save(); invalidateSlides(); renderBuild();
+    };
+    if (pl.pco) $('#pl-pco-update').onclick = () => openPlanImport({ serviceTypeId: pl.pco.serviceTypeId, planId: pl.pco.planId, playlist: pl });
     $('#pl-del').onclick = () => {
       if (!confirm(`Delete the playlist "${pl.title}"? (The songs, lessons and videos stay in the library.)`)) return;
       D().playlists = D().playlists.filter((p) => p.id !== pl.id); B.playlist = null; Store.save(); renderBuild();
@@ -1229,6 +1268,237 @@
     }
   }
 
+  // ---------- Planning Center plan import (service order → playlist) ----------
+  const IMG_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+  const VID_EXT = ['mp4', 'm4v', 'mov', 'webm'];
+  const extOf = (name) => (String(name).split('.').pop() || '').toLowerCase();
+  const naturalSort = (a, b) => a.filename.localeCompare(b.filename, undefined, { numeric: true, sensitivity: 'base' });
+
+  /** Download an attachment into the library: through the Mac app, or (Chrome) with a normal download. */
+  async function downloadInto(att, path) {
+    if (window.NCDesktop) return PCO.downloadAttachment(att, path);
+    const res = await PCO.fetch(att.self + '/open', { Authorization: PCO.auth(), Accept: 'application/json', 'Content-Type': 'application/json' }, { method: 'POST', body: '{}' });
+    const body = await res.json();
+    const url = body && body.data && body.data.attributes && body.data.attributes.attachment_url;
+    if (!url) throw new Error(`No download link for “${att.filename}”.`);
+    await Store.writeFile(path, await (await fetch(url)).blob());
+    return path;
+  }
+
+  /** Work out what each plan item will become. */
+  async function analyzePlan(stId, planId, onProgress) {
+    const items = await PCO.planItems(stId, planId);
+    const out = [];
+    let n = 0;
+    for (const it of items) {
+      n++; if (onProgress) onProgress(`Looking at item ${n} of ${items.length}…`);
+      if (it.kind === 'header') { out.push({ type: 'label', title: it.title, it }); continue; }
+      if (it.kind === 'song' && it.songId) {
+        const have = D().songs.find((s) => s.pco && s.pco.songId === it.songId);
+        out.push({ type: 'song', title: (it.song && it.song.title) || it.title, it, have });
+        continue;
+      }
+      let atts = [];
+      try { atts = await PCO.itemAttachments(stId, planId, it); } catch (e) { /* no attachments or no permission */ }
+      const imgs = atts.filter((a) => IMG_EXT.includes(extOf(a.filename))).sort(naturalSort);
+      const pdfs = atts.filter((a) => extOf(a.filename) === 'pdf').sort(naturalSort);
+      const vids = atts.filter((a) => VID_EXT.includes(extOf(a.filename))).sort(naturalSort);
+      const other = atts.filter((a) => !imgs.includes(a) && !pdfs.includes(a) && !vids.includes(a));
+      if (!imgs.length && !pdfs.length && !vids.length) {
+        const ppt = other.find((a) => /^(pptx?|key)$/.test(extOf(a.filename)));
+        out.push({ type: 'skip', title: it.title, it, reason: ppt ? `${ppt.filename}: export PowerPoint or Keynote as JPEG or PDF, then attach that` : (other.length ? `Only ${other.map((a) => a.filename).join(', ')} attached` : 'Nothing attached') });
+        continue;
+      }
+      out.push({ type: 'media', title: it.title, it, imgs, pdfs, vids, other });
+    }
+    return out;
+  }
+
+  function describeEntry(e) {
+    if (e.type === 'label') return { icon: 'label', kind: 'Section', detail: 'Section label' };
+    if (e.type === 'song') return { icon: 'song', kind: 'Song', detail: e.have ? 'Already in the library' : 'New song, with lyrics from SongSelect' };
+    if (e.type === 'skip') return { icon: 'x', kind: 'Skipped', detail: e.reason, skip: true };
+    const parts = [];
+    if (e.imgs.length) parts.push(`${e.imgs.length} slide picture${e.imgs.length === 1 ? '' : 's'}`);
+    if (e.pdfs.length) parts.push(`${e.pdfs.length} PDF${e.pdfs.length === 1 ? '' : 's'} (each page becomes a slide)`);
+    if (e.vids.length) parts.push(`${e.vids.length} video${e.vids.length === 1 ? '' : 's'}`);
+    if (e.other.length) parts.push(`skips ${e.other.map((a) => a.filename).join(', ')}`);
+    return { icon: e.imgs.length || e.pdfs.length ? 'lesson' : 'video', kind: e.imgs.length || e.pdfs.length ? 'Lesson' : 'Video', detail: parts.join(' · ') };
+  }
+
+  /** Create (or update) the playlist from the analysed plan. */
+  async function importPlan(stId, plan, entries, existing, onProgress) {
+    const warnings = [];
+    const items = [];
+    const pl = existing || { id: Media.id(), title: plan.title || 'Sunday School', date: (plan.sortDate || '').slice(0, 10), items: [] };
+    let n = 0;
+    for (const e of entries) {
+      n++;
+      const step = (msg) => onProgress && onProgress(`${n} of ${entries.length}: ${msg}`);
+      try {
+        if (e.type === 'label') { items.push({ id: Media.id(), type: 'label', title: e.title }); continue; }
+        if (e.type === 'skip') { warnings.push(`${e.title}: ${e.reason}`); continue; }
+        if (e.type === 'song') {
+          step(`song “${e.title}”`);
+          let song = D().songs.find((s) => s.pco && s.pco.songId === e.it.songId);
+          if (!song) {
+            const arrs = await PCO.arrangements(e.it.songId);
+            const arr = arrs.find((a) => a.id === e.it.arrangementId && a.lyrics) || arrs.find((a) => a.lyrics);
+            if (!arr) { warnings.push(`${e.title}: no lyrics in Planning Center, so it was left out`); continue; }
+            const meta = e.it.song || { id: e.it.songId, title: e.title, author: '', copyright: '', ccli: '' };
+            song = Object.assign({ id: Media.id(), background: '', added: Date.now(), slideMode: 'auto' }, PCO.toSong(Object.assign({ id: e.it.songId }, meta), arr));
+            D().songs.push(song);
+          }
+          items.push({ id: Media.id(), type: 'song', ref: song.id, arrangement: e.it.customSequence ? e.it.customSequence.join(', ') : undefined });
+          continue;
+        }
+        // slides (pictures and PDFs) → one lesson
+        const pics = e.imgs.concat(e.pdfs).sort(naturalSort);
+        if (pics.length) {
+          const key = pics.map((a) => a.id + '@' + a.updated).join(',');
+          let lesson = D().lessons.find((l) => l.pco && l.pco.key === key);
+          if (!lesson) {
+            lesson = { id: Media.id(), title: e.title, slides: [], added: Date.now(), pco: { key, itemId: e.it.id } };
+            for (const att of pics) {
+              if (extOf(att.filename) === 'pdf') {
+                step(`downloading ${att.filename}`);
+                const tmp = `media/tmp/${Media.id()}.pdf`;
+                await downloadInto(att, tmp);
+                const pages = await Media.pdfPages({ url: await Store.url(tmp) }, (p, t) => step(`turning page ${p} of ${t} of ${att.filename} into a slide`));
+                for (let i = 0; i < pages.length; i++) {
+                  const sid = Media.id();
+                  lesson.slides.push({ id: sid, path: await Store.writeFile(`media/lessons/${lesson.id}/${sid}.jpg`, pages[i]), name: `${att.filename} p${i + 1}` });
+                }
+                await Store.remove(tmp);
+              } else {
+                step(`downloading ${att.filename}`);
+                const sid = Media.id();
+                lesson.slides.push({ id: sid, path: await downloadInto(att, `media/lessons/${lesson.id}/${sid}.${extOf(att.filename)}`), name: att.filename });
+              }
+            }
+            lesson.thumb = lesson.slides[0] && lesson.slides[0].path;
+            D().lessons.push(lesson);
+          }
+          items.push({ id: Media.id(), type: 'lesson', ref: lesson.id });
+        }
+        for (const att of e.vids) {
+          let video = D().videos.find((v) => v.pco && v.pco.attachmentId === att.id && v.pco.updated === att.updated);
+          if (!video) {
+            step(`downloading ${att.filename}`);
+            const vid = Media.id();
+            const path = await downloadInto(att, `media/videos/${vid}.${extOf(att.filename)}`);
+            const probe = await Media.probeUrl(await Store.url(path));
+            if (!probe.ok) { warnings.push(`${att.filename}: ${probe.reason}. Convert it to MP4 (H.264).`); await Store.remove(path); continue; }
+            const thumb = probe.thumb ? await Store.writeFile(`media/thumbs/${vid}.jpg`, probe.thumb) : null;
+            video = { id: vid, title: e.vids.length > 1 ? `${e.title} (${Media.baseName(att.filename)})` : e.title, path, thumb, duration: probe.duration, added: Date.now(), pco: { attachmentId: att.id, updated: att.updated } };
+            D().videos.push(video);
+          }
+          items.push({ id: Media.id(), type: 'video', ref: video.id });
+        }
+      } catch (err) {
+        warnings.push(`${e.title}: ${err.message}`);
+      }
+    }
+    // keep backgrounds chosen for songs that were already in the playlist
+    const oldBg = Object.fromEntries((pl.items || []).filter((x) => x.type === 'song' && x.background).map((x) => [x.ref, x.background]));
+    for (const it of items) if (it.type === 'song' && oldBg[it.ref]) it.background = oldBg[it.ref];
+    pl.items = items;
+    pl.pco = { serviceTypeId: stId, planId: plan.id, dates: plan.dates, imported: new Date().toISOString() };
+    if (!existing) D().playlists.push(pl);
+    Store.save(); invalidateSlides();
+    return { playlist: pl, warnings };
+  }
+
+  async function openPlanImport(pre) {
+    if (!PCO.isConfigured()) {
+      if (confirm('Planning Center isn’t connected yet. Open Settings to add the access token?')) { setBuildTab('settings'); B.setSection = 'pco'; renderBuild(); }
+      return;
+    }
+    const m = $('#modal');
+    m.innerHTML = `<div class="modal-card pco-card">
+      <div class="col-head"><h2>${pre ? 'Update from Planning Center' : 'Import a plan from Planning Center'}</h2><button class="btn" id="plan-close">Close</button></div>
+      <div class="pco-body">
+        <div class="pco-left">
+          <label class="block-label">Service type<select id="plan-st"><option>Loading…</option></select></label>
+          <ul class="list pco-list" id="plan-list"></ul>
+        </div>
+        <div class="pco-right" id="plan-preview"><p class="muted pad">Pick a plan to see what will come across.</p></div>
+      </div>
+      <div class="row gap pco-foot"><span id="plan-status" class="muted"></span><span class="spacer"></span>
+        <button class="btn primary" id="plan-go" disabled>Import</button></div>
+    </div>`;
+    m.classList.add('show');
+    m.onclick = null;
+    const status = (msg, kind) => { const el = $('#plan-status'); if (el) { el.textContent = msg || ''; el.className = kind === 'error' ? 'error-text' : 'muted'; } };
+    const close = () => { m.classList.remove('show'); m.innerHTML = ''; };
+    $('#plan-close').onclick = close;
+    let plans = null, picked = null, entries = null, stId = null, token = 0;
+
+    const showPlans = () => {
+      const row = (p) => `<li data-plan="${esc(p.id)}" class="${picked && picked.id === p.id ? 'selected' : ''}"><strong>${esc(p.title || p.series || 'Plan')}</strong><small>${esc(p.dates)} · ${p.items} item${p.items === 1 ? '' : 's'}</small></li>`;
+      $('#plan-list').innerHTML = (plans.future.length ? '<li class="muted list-head">Coming up</li>' + plans.future.map(row).join('') : '') +
+        (plans.past.length ? '<li class="muted list-head">Recent</li>' + plans.past.map(row).join('') : '') ||
+        '<li class="muted">No plans in this service type.</li>';
+    };
+    const pickPlan = async (p) => {
+      const my = ++token;
+      picked = p; entries = null; showPlans();
+      $('#plan-go').disabled = true;
+      const box = $('#plan-preview');
+      box.innerHTML = `<p class="muted pad">Reading “${esc(p.title || p.dates)}”…</p>`;
+      try { entries = await analyzePlan(stId, p.id, (msg) => my === token && status(msg)); }
+      catch (e) { if (my === token) { box.innerHTML = `<p class="error-text pad">${esc(e.message)}</p>`; status(''); } return; }
+      if (my !== token) return;
+      status('');
+      const existing = pre && pre.playlist ? pre.playlist : D().playlists.find((x) => x.pco && x.pco.planId === p.id);
+      const usable = entries.filter((e) => e.type !== 'skip' && e.type !== 'label').length;
+      box.innerHTML = `<h3>${esc(p.title || 'Plan')}</h3><p class="muted small">${esc(p.dates)}${existing ? ' · already imported as “' + esc(existing.title) + '”: importing again updates it' : ''}</p>
+        <ol class="plan-items">${entries.map((e) => { const d = describeEntry(e); return `
+          <li class="${d.skip ? 'skip' : ''} ${e.type === 'label' ? 'label' : ''}">
+            ${e.type === 'label' ? `<span class="sec-label">${esc(e.title)}</span>` : `
+            <span class="icon t-${d.icon === 'x' ? 'skip' : d.icon}">${icon(d.icon)}</span>
+            <span class="name">${esc(e.title)}<small>${esc(d.kind)} · ${esc(d.detail)}</small></span>`}
+          </li>`; }).join('')}</ol>`;
+      $('#plan-go').disabled = !usable;
+      $('#plan-go').textContent = existing ? 'Update the playlist' : `Import ${usable} item${usable === 1 ? '' : 's'}`;
+      $('#plan-go').onclick = async () => {
+        $('#plan-go').disabled = true;
+        busy('Importing from Planning Center…');
+        try {
+          const { playlist, warnings } = await importPlan(stId, p, entries, existing, (msg) => busy(msg));
+          busy(); close();
+          B.playlist = playlist.id; setBuildTab('playlists');
+          toast(`${existing ? 'Updated' : 'Imported'} “${playlist.title}” with ${playlist.items.filter((x) => x.type !== 'label').length} items.`);
+          if (warnings.length) alert('Some things didn’t come across:\n\n' + warnings.join('\n'));
+        } catch (e) { busy(); status(e.message, 'error'); $('#plan-go').disabled = false; }
+      };
+    };
+
+    try {
+      const types = await PCO.serviceTypes();
+      const remembered = S().pcoServiceType;
+      stId = (pre && pre.serviceTypeId) || (types.find((t) => t.id === remembered) || types.find((t) => /kid/i.test(t.name)) || types[0] || {}).id;
+      $('#plan-st').innerHTML = types.map((t) => `<option value="${esc(t.id)}" ${t.id === stId ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
+      const loadPlans = async () => {
+        $('#plan-list').innerHTML = '<li class="muted">Loading plans…</li>';
+        plans = await PCO.plans(stId);
+        showPlans();
+        if (pre && pre.planId) {
+          const p = plans.future.concat(plans.past).find((x) => x.id === pre.planId);
+          if (p) pickPlan(p); else status('That plan is no longer in the upcoming or recent list.', 'error');
+        }
+      };
+      $('#plan-st').onchange = async (e) => { stId = e.target.value; S().pcoServiceType = stId; Store.save(); picked = null; pre = null; $('#plan-preview').innerHTML = '<p class="muted pad">Pick a plan to see what will come across.</p>'; $('#plan-go').disabled = true; await loadPlans(); };
+      $('#plan-list').onclick = (e) => {
+        const li = e.target.closest('[data-plan]');
+        if (li) pickPlan(plans.future.concat(plans.past).find((x) => x.id === li.dataset.plan));
+      };
+      await loadPlans();
+    } catch (e) {
+      $('#plan-list').innerHTML = `<li class="error-text">${esc(e.message)}</li>`;
+    }
+  }
+
   // ---------- Lessons (slide images) ----------
   function buildLessons(body) {
     const lessons = sortedBy(D().lessons);
@@ -1242,6 +1512,7 @@
         <div class="row gap wrap">
           <button class="btn primary" id="lesson-files">+ From pictures…</button>
           <button class="btn" id="lesson-folder">+ From a folder…</button>
+          <button class="btn" id="lesson-pdf" title="Each page of the PDF becomes a slide">+ From a PDF…</button>
         </div>
         <ul class="list" id="lesson-list">${lessons.map((l) => `<li class="${l.id === B.lesson ? 'selected' : ''}" data-id="${l.id}"><strong>${esc(l.title)}</strong><small>${l.slides.length} slides</small></li>`).join('') || '<li class="muted">No lessons yet.</li>'}</ul>
       </section>
@@ -1272,6 +1543,18 @@
       busy(); renderBuild();
     };
     $('#lesson-files').onclick = async () => newLesson(await pickFiles({ accept: 'image/*' }));
+    $('#lesson-pdf').onclick = async () => {
+      const [f] = await pickFiles({ accept: 'application/pdf,.pdf', multiple: false });
+      if (!f) return;
+      const title = prompt('Name for this lesson:', Media.baseName(f.name));
+      if (title === null) return;
+      busy('Reading the PDF…');
+      try {
+        const l = await Media.importPdfLesson(f, title || Media.baseName(f.name), busy);
+        B.lesson = l.id; toast(`Added “${l.title}” with ${l.slides.length} slides.`);
+      } catch (e) { toast(e.message, 'error'); }
+      busy(); renderBuild();
+    };
     $('#lesson-folder').onclick = async () => {
       busy('Reading folder…');
       try {
