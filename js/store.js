@@ -48,6 +48,18 @@
     });
   }
 
+  function defaultTimers() {
+    const t = (id, title, seconds, message, autoNext) => ({ id, title, seconds, message, chime: true, autoNext: !!autoNext });
+    return [
+      t('t-start', 'Class starts soon', 300, 'Let’s begin!', true),
+      t('t-cleanup', 'Cleanup time', 180, 'Time’s up!'),
+      t('t-game', 'Game time', 120, 'Time’s up!'),
+      t('t-activity', 'Activity time', 600, 'Time’s up!'),
+      t('t-discuss', 'Discussion time', 300, 'Time’s up!'),
+      t('t-quiet', 'Quiet time', 60, 'Time’s up!'),
+    ];
+  }
+
   function emptyLibrary() {
     return {
       version: DATA_VERSION,
@@ -56,6 +68,8 @@
       videos: [],
       backgrounds: [],
       playlists: [],
+      // Countdown timers (Present mode → Timers, and as playlist items). Edit in Settings → Timers.
+      timers: defaultTimers(),
       settings: {
         font: 'Avenir Next',
         textColor: '#ffffff',
@@ -254,4 +268,5 @@
 
   window.Store = Store;
   window.NC_DATA_VERSION = DATA_VERSION;
+  window.NC_DEFAULT_TIMERS = defaultTimers;
 })();

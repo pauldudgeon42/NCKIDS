@@ -12,6 +12,9 @@
     tv: null,        // Renderer in the TV window
     preview: null,   // Renderer in the control screen
     state: { bg: null, slide: null, black: false, logo: false },
+    timer: null,         // running countdown: { title, total, remaining, endAt, paused, done, message, chime, autoNext, ... }
+    onTimerTick: null,   // (timer or null) => void
+    onTimerEnd: null,    // (timer) => void
     onStatus: null,      // (isOpen) => void
     onVideoTime: null,   // (cur, dur, paused) => void
     onVideoEnded: null,
@@ -120,11 +123,13 @@
       this._drawSlide(r, st.slide, true);
       r.showLogo(st.logo);
       r.showBlack(st.black);
+      r.setTimer(this.timer, s);
     },
 
     _drawSlide(r, slide, isRedraw) {
       const s = this.settings();
-      if (!slide) { r.setText(''); r.setFooter(''); r.setImage(null); r.stopVideo(); return; }
+      if (!slide) { r.setText(''); r.setFooter(''); r.setImage(null); r.stopVideo(); r.setTimer(null); return; }
+      if (slide.kind !== 'timer') r.setTimer(null);
       if (slide.kind === 'text') {
         r.stopVideo(); r.setImage(null);
         r.setText(slide.text, slide.style || s); r.setFooter(slide.footer || '');
@@ -135,6 +140,8 @@
         r.setText(''); r.setFooter(''); r.setImage(null);
         // When the TV opens mid-video we don't restart the video on it.
         if (!isRedraw) r.playVideo(slide.url, r === this.tv ? s.audioDeviceId : '');
+      } else if (slide.kind === 'timer') {
+        r.stopVideo(); r.setImage(null); r.setText(''); r.setFooter('');
       } else { // 'background' – background only
         r.stopVideo(); r.setImage(null); r.setText(''); r.setFooter('');
       }
@@ -152,15 +159,88 @@
       this.state.black = false;
       this.state.logo = false;
       if (slide && slide.bg !== undefined) this.setBackground(slide.bg);
+      if (!slide || slide.kind !== 'timer') this.stopTimer();
       for (const r of this.renderers()) {
         r.setFade(this.settings().transitionSeconds);
         r.showBlack(false); r.showLogo(false);
         this._drawSlide(r, slide, false);
       }
+      if (slide && slide.kind === 'timer') this.startTimer(slide);
+    },
+
+    // ---------- countdown timers ----------
+    startTimer(t) {
+      this.stopTimer(true);
+      const seconds = Math.max(1, Number(t.seconds) || 60);
+      this.timer = Object.assign({}, t, { total: seconds, remaining: seconds, endAt: Date.now() + seconds * 1000, paused: false, done: false });
+      this._timerInterval = setInterval(() => this._tick(), 200);
+      this._tick();
+    },
+    _tick() {
+      const t = this.timer;
+      if (!t) return;
+      if (!t.paused && !t.done) {
+        t.remaining = Math.max(0, (t.endAt - Date.now()) / 1000);
+        if (t.remaining <= 0) {
+          t.done = true;
+          if (t.chime) this.chime();
+          if (this.onTimerEnd) setTimeout(() => this.onTimerEnd(t), 0);
+        }
+      }
+      for (const r of this.renderers()) r.setTimer(t, this.settings());
+      if (this.onTimerTick) this.onTimerTick(t);
+    },
+    pauseTimer() {
+      const t = this.timer;
+      if (!t || t.done) return;
+      if (t.paused) { t.endAt = Date.now() + t.remaining * 1000; t.paused = false; } else t.paused = true;
+      this._tick();
+    },
+    addTime(seconds) {
+      const t = this.timer;
+      if (!t) return;
+      if (t.done) { t.done = false; t.remaining = 0; t.endAt = Date.now(); t.total = 0; }
+      t.remaining += seconds; t.total += seconds;
+      t.endAt = Date.now() + t.remaining * 1000;
+      this._tick();
+    },
+    restartTimer() {
+      const t = this.timer;
+      if (!t) return;
+      Object.assign(t, { remaining: t.total, endAt: Date.now() + t.total * 1000, paused: false, done: false });
+      this._tick();
+    },
+    stopTimer(silent) {
+      clearInterval(this._timerInterval);
+      this._timerInterval = null;
+      if (!this.timer) return;
+      this.timer = null;
+      for (const r of this.renderers()) r.setTimer(null);
+      if (!silent && this.onTimerTick) this.onTimerTick(null);
+    },
+    /** A soft three-note bell, played through the TV speakers when one is chosen in Settings. */
+    async chime() {
+      try {
+        const ctx = this._audio || (this._audio = new (window.AudioContext || window.webkitAudioContext)());
+        const sink = this.settings().audioDeviceId;
+        if (sink && ctx.setSinkId && ctx.sinkId !== sink) await ctx.setSinkId(sink).catch(() => {});
+        if (ctx.state === 'suspended') await ctx.resume();
+        [[880, 0], [1108.7, 0.18], [1318.5, 0.36]].forEach(([freq, at]) => {
+          const o = ctx.createOscillator(), g = ctx.createGain();
+          o.type = 'sine'; o.frequency.value = freq;
+          const t0 = ctx.currentTime + at;
+          g.gain.setValueAtTime(0.0001, t0);
+          g.gain.exponentialRampToValueAtTime(0.35, t0 + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.4);
+          o.connect(g).connect(ctx.destination);
+          o.start(t0); o.stop(t0 + 1.5);
+        });
+      } catch (e) { console.warn('Chime could not play', e); }
     },
 
     /** Remove words/slide/video but keep the background moving. */
     clear() {
+      this.stopTimer();
       this.state.slide = null;
       for (const r of this.renderers()) this._drawSlide(r, null);
       if (this.onVideoTime) this.onVideoTime(0, 0, true);

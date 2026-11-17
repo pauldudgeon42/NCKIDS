@@ -28,6 +28,13 @@
   .r-logo { display: flex; align-items: center; justify-content: center; background: #000; }
   .r-logo > img { position: static; max-width: 70%; max-height: 70%; width: auto; height: auto; object-fit: contain; }
   .r-black { background: #000; }
+  .r-timer { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: #fff; text-align: center;
+             text-shadow: 0 6px 28px rgba(0,0,0,.65), 0 2px 6px rgba(0,0,0,.6); }
+  .r-timer-label { font-size: 96px; font-weight: 800; max-width: 88%; line-height: 1.1; }
+  .r-timer-digits { font-size: 400px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; transition: color .3s; }
+  .r-timer.ending .r-timer-digits { color: #FFD166; }
+  .r-timer.paused .r-timer-digits { opacity: .5; }
+  .r-timer.done .r-timer-digits { font-size: 230px; color: #FFD166; max-width: 90%; line-height: 1.05; letter-spacing: 0; }
   .r-hidden { opacity: 0 !important; pointer-events: none; }
   `;
 
@@ -72,13 +79,14 @@
         <div class="r-layer r-image r-hidden"></div>
         <div class="r-layer r-text"></div>
         <div class="r-layer r-footer r-hidden"></div>
+        <div class="r-layer r-timer r-hidden"><div class="r-timer-label"></div><div class="r-timer-digits"></div></div>
         <div class="r-layer r-video r-hidden"></div>
         <div class="r-layer r-logo r-hidden"></div>
         <div class="r-layer r-black r-hidden"></div>`;
       host.appendChild(stage);
       this.stage = stage;
       this.el = {};
-      for (const n of ['bg', 'image', 'text', 'footer', 'video', 'logo', 'black']) this.el[n] = stage.querySelector('.r-' + n);
+      for (const n of ['bg', 'image', 'text', 'footer', 'timer', 'video', 'logo', 'black']) this.el[n] = stage.querySelector('.r-' + n);
       this.bgKey = null;
       this.videoEl = null;
       this.fit();
@@ -219,6 +227,24 @@
       }
       this.el.video.innerHTML = '';
       this.el.video.classList.add('r-hidden');
+    }
+
+    /** Countdown: t = { title, remaining (seconds), done, paused, message } or null to hide. */
+    setTimer(t, style) {
+      const el = this.el.timer;
+      if (!t) { el.classList.add('r-hidden'); return; }
+      const fmt = (sec) => {
+        sec = Math.max(0, Math.ceil(sec));
+        const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+        return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
+      };
+      el.querySelector('.r-timer-label').textContent = t.done ? '' : (t.title || '');
+      el.querySelector('.r-timer-digits').textContent = t.done ? (t.message || 'Time’s up!') : fmt(t.remaining);
+      el.classList.toggle('done', !!t.done);
+      el.classList.toggle('paused', !!t.paused && !t.done);
+      el.classList.toggle('ending', !t.done && t.remaining <= 10.5 && t.remaining > 0);
+      if (style && style.font) el.style.fontFamily = `"${style.font}", "Avenir Next", "Helvetica Neue", Arial, sans-serif`;
+      el.classList.remove('r-hidden');
     }
 
     setLogo(url) {
