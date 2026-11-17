@@ -10,7 +10,9 @@ const OUT = __dirname + '/shots/';
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
-  page.on('dialog', (d) => d.type() === 'prompt' ? d.accept('Lesson 1: Noah') : d.accept());
+  page.on('dialog', (d) => d.accept());
+  // Like the Mac app (Electron), there is no window.prompt: the app must use its own pop-up.
+  await page.addInitScript(() => { window.prompt = () => { throw new Error('prompt() does not exist in the Mac app'); }; });
   const choose = async (clickSel, files) => {
     const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click(clickSel)]);
     await fc.setFiles(files.map((f) => M + f));
@@ -29,7 +31,21 @@ const OUT = __dirname + '/shots/';
   console.log('videos:', await page.$$eval('.media-card', (c) => c.length));
 
   await page.click('[data-tab=lessons]');
-  await choose('#lesson-files', ['Slide10.jpg', 'Slide2.jpg', 'Slide1.jpg', 'Slide3.jpg']); await idle();
+  await choose('#lesson-files', ['Slide10.jpg', 'Slide2.jpg', 'Slide1.jpg', 'Slide3.jpg']);
+  await page.waitForSelector('.ask-input');
+  await page.fill('.ask-input', 'Lesson 1: Noah');
+  await page.click('.ask-card .btn.primary'); await idle();
+  console.log('lesson title:', await page.$eval('#lesson-title', (e) => e.value));
+  // PDF lesson, cancelled then imported (Escape cancels)
+  await choose('#lesson-pdf', ['Lesson4.pdf']);
+  await page.waitForSelector('.ask-input');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.ask-input', { state: 'detached' });
+  await choose('#lesson-pdf', ['Lesson4.pdf']);
+  await page.waitForSelector('.ask-input');
+  await page.keyboard.press('Enter'); await idle();
+  console.log('lessons after PDF:', await page.$$eval('#lesson-list li', (l) => l.map((x) => x.textContent.trim()).join(' / ')));
+  await page.click('#lesson-list li:first-child');
   console.log('lesson slide order:', await page.$$eval('#lesson-slides .cap', (c) => c.map((x) => x.textContent.trim())));
 
   await page.click('[data-tab=songs]');

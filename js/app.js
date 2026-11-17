@@ -7,7 +7,7 @@
  * Data lives in Store.data (see store.js). Call Store.save() after changing it.
  */
 (function () {
-  const APP_VERSION = '1.3.0';
+  const APP_VERSION = '1.3.1';
 
   // ---------- small helpers ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -53,6 +53,30 @@
     if (!iso) return '';
     const d = new Date(iso + 'T12:00:00');
     return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  /**
+   * Ask for a short piece of text in the app's own pop-up. (The browser's prompt()
+   * doesn't exist in the Mac app: Electron returns null without showing anything.)
+   * Resolves to the text, or null if cancelled.
+   */
+  function askText(question, value = '', { ok = 'OK' } = {}) {
+    return new Promise((resolve) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'modal show ask-modal';
+      wrap.innerHTML = `<form class="modal-card ask-card" autocomplete="off">
+        <label class="ask-label">${esc(question)}<input class="ask-input" value="${esc(value)}"></label>
+        <div class="row gap ask-btns"><button type="button" class="btn" data-ask="cancel">Cancel</button><button class="btn primary">${esc(ok)}</button></div></form>`;
+      document.body.appendChild(wrap);
+      const input = wrap.querySelector('input');
+      const done = (v) => { wrap.remove(); document.removeEventListener('keydown', onKey, true); resolve(v); };
+      const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(null); } };
+      document.addEventListener('keydown', onKey, true);
+      wrap.querySelector('form').onsubmit = (e) => { e.preventDefault(); done(input.value); };
+      wrap.querySelector('[data-ask=cancel]').onclick = () => done(null);
+      wrap.onclick = (e) => { if (e.target === wrap) done(null); };
+      setTimeout(() => { input.focus(); input.select(); }, 0);
+    });
   }
 
   let toastTimer;
@@ -1013,8 +1037,8 @@
       const copy = { id: Media.id(), title: pl.title + ' (copy)', date: nextSunday(), items: pl.items.map((it) => Object.assign({}, it, { id: Media.id() })) };
       D().playlists.push(copy); B.playlist = copy.id; Store.save(); renderBuild();
     };
-    $('#pl-label').onclick = () => {
-      const title = prompt('Section label (for example “Worship” or “Lesson”):', 'Worship');
+    $('#pl-label').onclick = async () => {
+      const title = await askText('Section label (for example “Worship” or “Lesson”):', 'Worship', { ok: 'Add' });
       if (!title) return;
       pl.items.push({ id: Media.id(), type: 'label', title: title.trim() });
       Store.save(); invalidateSlides(); renderBuild();
@@ -1472,10 +1496,7 @@
   /** Download an attachment into the library: through the Mac app, or (Chrome) with a normal download. */
   async function downloadInto(att, path) {
     if (window.NCDesktop) return PCO.downloadAttachment(att, path);
-    const res = await PCO.fetch(att.self + '/open', { Authorization: PCO.auth(), Accept: 'application/json', 'Content-Type': 'application/json' }, { method: 'POST', body: '{}' });
-    const body = await res.json();
-    const url = body && body.data && body.data.attributes && body.data.attributes.attachment_url;
-    if (!url) throw new Error(`No download link for “${att.filename}”.`);
+    const url = await PCO.openUrl(att);
     await Store.writeFile(path, await (await fetch(url)).blob());
     return path;
   }
@@ -1483,6 +1504,10 @@
   /** Work out what each plan item will become. */
   async function analyzePlan(stId, planId, onProgress) {
     const items = await PCO.planItems(stId, planId);
+    // All the plan's files in one call. If that fails, each item is asked on its own below.
+    let all = null, allError = null;
+    if (onProgress) onProgress('Looking at the plan’s files…');
+    try { all = await PCO.planAttachments(stId, planId); } catch (e) { allError = e; }
     const out = [];
     let n = 0;
     for (const it of items) {
@@ -1493,18 +1518,40 @@
         out.push({ type: 'song', title: (it.song && it.song.title) || it.title, it, have });
         continue;
       }
-      let atts = [];
-      try { atts = await PCO.itemAttachments(stId, planId, it); } catch (e) { /* no attachments or no permission */ }
-      const imgs = atts.filter((a) => IMG_EXT.includes(extOf(a.filename))).sort(naturalSort);
-      const pdfs = atts.filter((a) => extOf(a.filename) === 'pdf').sort(naturalSort);
-      const vids = atts.filter((a) => VID_EXT.includes(extOf(a.filename))).sort(naturalSort);
-      const other = atts.filter((a) => !imgs.includes(a) && !pdfs.includes(a) && !vids.includes(a));
+      let atts = all ? all.filter((a) => (a.attachableType === 'Item' && a.attachableId === String(it.id)) ||
+        (a.attachableType === 'Media' && (it.mediaIds || []).includes(a.attachableId))) : [];
+      let error = null;
+      if (!atts.length) {
+        try { atts = await PCO.itemAttachments(stId, planId, it); } catch (e) { error = e; }
+      }
+      const files = atts.filter((a) => !a.linked && a.downloadable);
+      const kind = (a) => {
+        const x = extOf(a.filename), t = a.contentType || '';
+        if (x === 'pdf' || t === 'application/pdf') return 'pdf';
+        if (IMG_EXT.includes(x) || t.startsWith('image/')) return 'img';
+        if (VID_EXT.includes(x) || t.startsWith('video/')) return 'vid';
+        return 'other';
+      };
+      const imgs = files.filter((a) => kind(a) === 'img').sort(naturalSort);
+      const pdfs = files.filter((a) => kind(a) === 'pdf').sort(naturalSort);
+      const vids = files.filter((a) => kind(a) === 'vid').sort(naturalSort);
+      const other = files.filter((a) => kind(a) === 'other');
+      const notes = [
+        ...atts.filter((a) => a.linked).map((a) => `${a.filename} is a web link${/youtube|vimeo/i.test(a.pcoType + a.linkUrl) ? ' (YouTube/Vimeo)' : ''}, so it can’t be downloaded. Upload the video file to the item instead`),
+        ...atts.filter((a) => !a.linked && !a.downloadable).map((a) => `${a.filename} isn’t downloadable in Planning Center`),
+      ];
       if (!imgs.length && !pdfs.length && !vids.length) {
         const ppt = other.find((a) => /^(pptx?|key)$/.test(extOf(a.filename)));
-        out.push({ type: 'skip', title: it.title, it, reason: ppt ? `${ppt.filename}: export PowerPoint or Keynote as JPEG or PDF, then attach that` : (other.length ? `Only ${other.map((a) => a.filename).join(', ')} attached` : 'Nothing attached') });
+        const why = error ? `Couldn’t read this item’s files: ${error.message}`
+          : ppt ? `${ppt.filename}: export PowerPoint or Keynote as JPEG or PDF, then attach that`
+          : notes.length ? notes.join('. ')
+          : other.length ? `Only ${other.map((a) => a.filename).join(', ')} attached`
+          : allError ? `Couldn’t read the plan’s files: ${allError.message}`
+          : 'Nothing attached';
+        out.push({ type: 'skip', title: it.title, it, reason: why });
         continue;
       }
-      out.push({ type: 'media', title: it.title, it, imgs, pdfs, vids, other });
+      out.push({ type: 'media', title: it.title, it, imgs, pdfs, vids, other, notes });
     }
     return out;
   }
@@ -1518,6 +1565,7 @@
     if (e.pdfs.length) parts.push(`${e.pdfs.length} PDF${e.pdfs.length === 1 ? '' : 's'} (each page becomes a slide)`);
     if (e.vids.length) parts.push(`${e.vids.length} video${e.vids.length === 1 ? '' : 's'}`);
     if (e.other.length) parts.push(`skips ${e.other.map((a) => a.filename).join(', ')}`);
+    if (e.notes && e.notes.length) parts.push(...e.notes);
     return { icon: e.imgs.length || e.pdfs.length ? 'lesson' : 'video', kind: e.imgs.length || e.pdfs.length ? 'Lesson' : 'Video', detail: parts.join(' · ') };
   }
 
@@ -1728,7 +1776,7 @@
     const newLesson = async (files, suggestedTitle) => {
       const imgs = (files || []).filter(Media.isImage);
       if (!imgs.length) { if (files && files.length) toast('No pictures found (JPEG or PNG).', 'error'); return; }
-      const title = prompt('Name for this lesson:', suggestedTitle || Media.baseName(imgs[0].name));
+      const title = await askText('Name for this lesson:', suggestedTitle || Media.baseName(imgs[0].name), { ok: 'Import' });
       if (title === null) return;
       busy('Copying slides…');
       try {
@@ -1741,7 +1789,7 @@
     $('#lesson-pdf').onclick = async () => {
       const [f] = await pickFiles({ accept: 'application/pdf,.pdf', multiple: false });
       if (!f) return;
-      const title = prompt('Name for this lesson:', Media.baseName(f.name));
+      const title = await askText('Name for this lesson:', Media.baseName(f.name), { ok: 'Import' });
       if (title === null) return;
       busy('Reading the PDF…');
       try {

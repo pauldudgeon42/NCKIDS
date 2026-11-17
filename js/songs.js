@@ -24,6 +24,8 @@
     ['intro', 'I'], ['outro', 'O'], ['ending', 'E'], ['interlude', 'IN'],
     ['refrain', 'R'], ['hook', 'H'], ['vamp', 'VA'], ['instrumental', 'IN'],
     ['misc', 'M'], ['part', 'PT'],
+    ['post-chorus', 'PO'], ['postchorus', 'PO'], ['post chorus', 'PO'],
+    ['turnaround', 'TA'], ['break', 'BK'], ['solo', 'SO'], ['coda', 'CO'], ['channel', 'CH'],
   ];
   const HEADER_RE = new RegExp(
     '^\\s*\\[?\\s*(' + SECTION_NAMES.map((s) => s[0].replace(' ', '\\s')).join('|') + ')\\s*(\\d+)?\\s*\\]?\\s*:?\\s*$',
@@ -228,10 +230,23 @@
   const REPEAT_RE = /\s*[([]?\s*(?:x\s*(\d)|(\d)\s*x|repeat\s*x?\s*(\d)?)\s*[)\]]?\s*$/i;
   const ABBREV = { V: 'Verse', C: 'Chorus', B: 'Bridge', PC: 'Pre-Chorus', P: 'Pre-Chorus', T: 'Tag' };
 
+  // Marks that show up on chord lines but aren't words: bar lines, slashes, repeats, "N.C." (no chord)
+  const CHART_MARK = /^(?:[|/.\-–—:%]+|\|:|:\||\(?\s*(?:x\s*\d+|\d+\s*x)\s*\)?|N\.?C\.?|\(|\))$/i;
   function isChordLine(line) {
-    const tokens = line.trim().split(/\s+/).filter((t) => t && !/^[|/.\-–—:]+$/.test(t) && !/^(N\.?C\.?)$/i.test(t));
-    return tokens.length > 0 && tokens.every((t) => CHORD.test(t.replace(/[()]/g, '')));
+    const tokens = line.trim().split(/[\s|]+|\s-\s|(?<=\S)-(?=[A-G])/).filter((t) => t);
+    if (!tokens.length) return false;
+    const rest = tokens.filter((t) => !CHART_MARK.test(t));
+    if (!rest.length) return tokens.some((t) => /^N\.?C\.?$/i.test(t)) || tokens.some((t) => /[|/%]/.test(t)) || tokens.every((t) => /^[|:\-–—]+$/.test(t));
+    // "A B C D E F G" is the alphabet song, not chords
+    if (rest.length >= 3 && rest.every((t, i) => /^[A-G]$/.test(t) && (i === 0 || t.charCodeAt(0) === rest[i - 1].charCodeAt(0) + 1))) return false;
+    return rest.every((t) => CHORD.test(t.replace(/[()]/g, '')));
   }
+  // Notes for the band or a group of singers, at the end of a lyric line: "Come on in (Kids)"
+  const SINGER_NOTE = /\s*[([](?:kids|girls|boys|all|everyone|men|women|guys|ladies|leader|lead|echo|instrumental|inst\.?|hold|clap|claps|spoken|shout|soft|quiet|loud|build|tacet|band|drums|key change|modulate|optional|\d+(?:st|nd|rd|th)? time(?: only)?)[)\]]\s*$/i;
+  // Commands from Planning Center chord charts
+  const PCO_COMMAND = /^(?:COLUMN[_ ]BREAK|PAGE[_ ]BREAK|\{[^}]*\}|<[^>]*>)$/i;
+  // "Turnaround: G C D" or "INTRO - | G | C |": a section name followed by chords
+  const LABEL_WITH_CHORDS = new RegExp('^\\[?\\s*(' + SECTION_NAMES.map((x) => x[0].replace(' ', '\\s')).join('|') + ')\\s*(\\d+)?\\s*\\]?\\s*[:\\-–—]\\s*(.+)$', 'i');
 
   /**
    * Clean up lyrics pasted from a chord chart, a website or a lyrics sheet.
@@ -246,6 +261,14 @@
       let line = raw2.replace(/\s+$/, '');
       const t = line.trim();
       if (!t) { out.push(''); chunkStart = out.length; continue; }
+      if (PCO_COMMAND.test(t)) { report.notes++; continue; }
+      // a section name with chords after it: keep the name, drop the chords
+      const lc = t.match(LABEL_WITH_CHORDS);
+      if (lc && isChordLine(lc[3])) {
+        report.chords += lc[3].split(/\s+/).length;
+        out.push(titleCase(lc[1].toLowerCase().replace(/\s+/g, ' ')) + (lc[2] ? ' ' + lc[2] : ''));
+        report.labels++; chunkStart = out.length; continue;
+      }
       // CCLI / copyright footer lines
       if (/^(CCLI (Song|License)|For use solely|©|\(c\)\s|Copyright|www\.ccli\.com|All rights reserved|Public Domain$)/i.test(t)) { report.footer++; continue; }
       // a line of chords only, e.g. "G    D/F#   Em7   C"
@@ -253,7 +276,10 @@
       // chords written inside the words: [G]Amazing [D]grace
       const bracketed = line.match(/\[[A-G][^\]\s]{0,8}\]/g);
       if (bracketed) { report.chords += bracketed.length; line = line.replace(/\[[A-G][^\]\s]{0,8}\]/g, '').replace(/\s{2,}/g, ' ').trim(); }
-      const tt = line.trim();
+      // spaces left from lining words up under chords: "Who's got a big  house"
+      let tt = line.trim().replace(/\s{2,}/g, ' ');
+      const sn = tt.match(SINGER_NOTE);
+      if (sn && sn.index > 0) { tt = tt.slice(0, sn.index).trim(); report.notes++; }
       // section labels: "VERSE 1:", "[Chorus]", "V1", "PC"
       const ab = tt.match(/^\[?\s*(PC|V|C|B|P|T)\s*(\d{0,2})\s*\]?:?$/i);
       if (ab) { out.push(ABBREV[ab[1].toUpperCase()] + (ab[2] ? ' ' + ab[2] : '')); report.labels++; chunkStart = out.length; continue; }
@@ -283,14 +309,24 @@
       }
       out.push(tt);
     }
-    const text = out.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\n+$/g, '');
+    // Drop sections left with no words (an "Instrumental" or "Vamp" that only had chords).
+    const kept = [];
+    for (let i = 0; i < out.length; i++) {
+      if (out[i] && HEADER_RE.test(out[i])) {
+        let j = i + 1;
+        while (j < out.length && !(out[j] && HEADER_RE.test(out[j])) && !out[j]) j++;
+        if (j >= out.length || HEADER_RE.test(out[j])) { report.empty = (report.empty || 0) + 1; continue; }
+      }
+      kept.push(out[i]);
+    }
+    const text = kept.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\n+$/g, '');
     // lines too long to fit on one line on the TV
     if (typeof document !== 'undefined' && settings) {
       const st = effectiveStyle({}, settings);
       setFont(st);
       for (const l of text.split('\n')) if (l && !HEADER_RE.test(l) && wrapLine(l, st).length > 1) report.longLines.push(l);
     }
-    const changed = report.chords + report.footer + report.repeats + report.labels + report.notes > 0;
+    const changed = report.chords + report.footer + report.repeats + report.labels + report.notes + (report.empty || 0) > 0;
     return { text, report, changed };
   }
 
@@ -302,6 +338,7 @@
     if (r.chords) removed.push(plural(r.chords, 'chord', 'chords'));
     if (r.footer) removed.push(plural(r.footer, 'CCLI or copyright line', 'CCLI or copyright lines'));
     if (r.notes) removed.push(plural(r.notes, 'note like “(Instrumental)”', 'notes like “(Instrumental)”'));
+    if (r.empty) removed.push(plural(r.empty, 'section with no words (like an instrumental)', 'sections with no words (like instrumentals)'));
     const parts = [];
     if (removed.length) parts.push('removed ' + join(removed));
     if (r.repeats) parts.push('wrote out ' + plural(r.repeats, 'repeat marked “(x2)”', 'repeats marked “(x2)”'));

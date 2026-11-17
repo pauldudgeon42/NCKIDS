@@ -3,6 +3,12 @@
 Plain-English notes on what changed in each version. Newest first.
 Version numbers: **major.minor.fix**. A new minor number means new features, and a new fix number means bug fixes only.
 
+## v1.3.1: fixes (November 2026)
+
+- **Lessons import works again in the Mac app.** New lessons (from pictures, a folder, a PDF or dragged in) asked for a name with a browser box that the Mac app can't show, so nothing happened. The app now asks with its own pop-up. Adding a section label to a playlist had the same problem and is fixed too.
+- **Plan import finds attached videos and files.** It now reads all of a plan's files from Planning Center in one go, no longer mistakes uploaded files for web links, works out the file type when a name has no extension, and tries every known address when downloading. The preview now says why an item is skipped (for example "a YouTube link can't be downloaded", or the exact Planning Center error) instead of "Nothing attached".
+- **Cleaner song lyrics from Planning Center and chord charts:** chord rows with bar lines, dashes or repeat marks, "N.C.", "Intro: G C D", Planning Center's COLUMN_BREAK / PAGE_BREAK, singer notes like "(Kids)", and extra spaces left from lining words up under chords are removed. "Instrumental", "Vamp" and similar sections with no words are dropped. The alphabet song is safe. Songs imported before this update can be refreshed with **Update from Planning Center** in the song editor.
+
 ## v1.3.0: ProContent (November 2026)
 
 - **ProContent inside the app:** Build → Backgrounds → **ProContent** opens Renewed Vision's ProContent website in its own window, with Back, Forward, Home and Reload buttons. Sign in once with the church's account and it's remembered.

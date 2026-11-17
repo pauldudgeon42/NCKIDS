@@ -1,0 +1,30 @@
+// Lyric cleanup cases (chord charts from Planning Center / SongSelect). node lyrics-test.js
+global.window = global;
+require('../js/songs.js');
+const clean = (t) => Songs.cleanLyrics(t).text;
+let fails = 0;
+const check = (name, input, expected) => {
+  const got = clean(input);
+  const ok = got === expected;
+  if (!ok) fails++;
+  console.log((ok ? 'ok   ' : 'FAIL ') + name + (ok ? '' : `\n  expected: ${JSON.stringify(expected)}\n  got:      ${JSON.stringify(got)}`));
+};
+check('chord line with bar lines and a repeat', 'Verse 1\n| G | C | Em | D | (x2)\nHello there', 'Verse 1\nHello there');
+check('chords over words, extra spaces', 'Verse 1\nG          C\nWho\'s got a big   house', 'Verse 1\nWho\'s got a big house');
+check('chord line with dashes', 'Chorus\nG - C - Em - D\nSing it loud', 'Chorus\nSing it loud');
+check('N.C. on its own', 'Tag\nN.C.\nIn my Father\'s house', 'Tag\nIn my Father\'s house');
+check('section name with chords after it', 'Turnaround: G C D\n\nVerse 2\nWords', 'Verse 2\nWords');
+check('Instrumental / Vamp with only chords are dropped', 'Verse 1\nA\'s words here\n\nINSTRUMENTAL\nG C Em D\n\n(instrumental)\n\nVAMP\nG C\n\nChorus\nYes', 'Verse 1\nA\'s words here\n\nChorus\nYes');
+check('a Vamp with words is kept', 'VAMP\nOh oh oh oh', 'Vamp\nOh oh oh oh');
+check('Planning Center column/page breaks', 'Bridge\nCome on in\nCOLUMN_BREAK\nPAGE_BREAK\nAll of us', 'Bridge\nCome on in\nAll of us');
+check('singer notes at the end of a line', 'Chorus\nCome on in (Kids)\nRight now [All]', 'Chorus\nCome on in\nRight now');
+check('real words in brackets are kept', 'Chorus\nDeep and wide (deep and wide)', 'Chorus\nDeep and wide (deep and wide)');
+check('(x2) still writes the line twice', 'Chorus\nDeep and wide (x2)', 'Chorus\nDeep and wide\nDeep and wide');
+check('(Repeat) at the end still repeats', 'Chorus\nHallelujah (Repeat)', 'Chorus\nHallelujah\nHallelujah');
+check('the alphabet song is not chords', 'Verse 1\nA B C D E F G\nH I J K L M N O P', 'Verse 1\nA B C D E F G\nH I J K L M N O P');
+check('inline [G] chords', 'Verse\n[G]Amazing [D/F#]grace', 'Verse\nAmazing grace');
+check('CCLI footer', 'Chorus\nYes\nCCLI Song # 1414735\n© 1993 Up In The Mix Music', 'Chorus\nYes');
+check('Intro with chord rows', 'INTRO\n| G | C |\n| Em | D |\n\nVERSE 1\nHi', 'Verse 1\nHi');
+check('short lyric lines that are not chords', 'Verse 1\nAm I loved?\nBe still\nGo', 'Verse 1\nAm I loved?\nBe still\nGo');
+console.log(fails ? `${fails} FAILED` : 'ERRORS: none');
+process.exit(fails ? 1 : 0);

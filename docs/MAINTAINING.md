@@ -72,6 +72,10 @@ The app isn't notarized by Apple (that needs a paid Apple Developer account), so
 - Re-importing: playlists keep `pco.planId`. Lessons remember a key made of their attachments' ids and update times, and videos remember `pco.attachmentId`, so unchanged files are reused rather than downloaded again.
 - `tests/plan-import-test.js` runs the whole flow against a fake Planning Center.
 
+### Things that work in Chrome but not in the Mac app
+
+- **`window.prompt()` doesn't exist in Electron.** It returns null without showing anything. Use `askText()` in `js/app.js` (the app's own pop-up). `alert()` and `confirm()` do work. `tests/e2e.js` makes `prompt()` throw, so a new one gets caught.
+
 ### Phone remote
 
 - `desktop/remote-server.js` is a plain Node `http` server (no packages), started from the **Phone** window. It listens on port 8765 (or the next free one) on every network interface.
@@ -137,6 +141,7 @@ python3 -m http.server 8765 --directory ..  &
 node e2e.js                   # imports everything, builds a playlist, runs it on a "TV" window
 ```
 
+`node lyrics-test.js` checks the lyric cleanup on chord-chart cases (no browser needed).
 `node procontent-test.js` checks adding ProContent downloads to Backgrounds (packs, single loops, unplayable files, the ProContent tag and search).
 `node remote-test.js` checks the phone remote (pairing, refusing unpaired phones, Next/Back/Clear/Black, tapping slides, timers, switching playlists, New code, Turn off).
 `node plan-import-test.js` checks importing a Planning Center plan (songs with plan order, JPEG slides, PDF pages, video, headers, skipped PowerPoint, re-import without duplicates).
