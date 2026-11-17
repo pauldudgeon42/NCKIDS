@@ -3,6 +3,13 @@
 Plain-English notes on what changed in each version. Newest first.
 Version numbers: **major.minor.fix**. A new minor number means new features, and a new fix number means bug fixes only.
 
+## v1.3.0: ProContent (November 2026)
+
+- **ProContent inside the app:** Build → Backgrounds → **ProContent** opens Renewed Vision's ProContent website in its own window, with Back, Forward, Home and Reload buttons. Sign in once with the church's account and it's remembered.
+- **Downloads go straight into Backgrounds:** a single loop is added as it is. A pack (.zip) is unpacked and each loop and picture is added. Other files (like Photoshop files) go to the Downloads folder as usual. Progress shows in the window's toolbar and the Dock.
+- Backgrounds from ProContent are tagged **ProContent**, and searching "procontent" finds them all. That matters because ProContent content may only be used while the membership is active.
+- **Settings → ProContent:** how it works, the licensing note, and **Sign out of ProContent**.
+
 ## v1.2.0: phone remote (November 2026)
 
 - **Run the slides from a phone** on the classroom Wi-Fi. Click **Phone** at the top of the Mac app, scan the QR code or type the 4-digit code, and the phone becomes a remote in its web browser. Nothing to install.

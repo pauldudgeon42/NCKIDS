@@ -17,6 +17,8 @@ js/app.js           all the screens and buttons
 desktop/main.js     the Mac app: windows, TV placement, library on disk (nclib://), Planning Center bridge, Keychain token, self-check
 desktop/preload.js  what the page may ask the Mac app to do (window.NCDesktop)
 desktop/remote-server.js  the phone remote's web server (plain Node, no packages)
+desktop/procontent.js     the ProContent window (website + toolbar) and catching its downloads
+desktop/unzip.js          unpacks videos/pictures from ProContent .zip packs (plain Node, streams, ZIP64)
 remote/             the phone remote page (index.html, remote.js, remote.css)
 js/qr.js            QR code maker for the pairing link
 package.json        Mac app settings for Electron and electron-builder
@@ -80,6 +82,13 @@ The app isn't notarized by Apple (that needs a paid Apple Developer account), so
 - The phone page uses the Wake Lock API where it's allowed and otherwise plays a tiny silent looping video (`remote/awake.mp4`), so the phone screen stays on.
 - `tests/remote-test.js` runs the real server, the app in Chrome and an iPhone-sized phone page together. The Mac app's self-check also starts the server, pairs and reads updates.
 
+### ProContent
+
+- There's no ProContent API for other apps, so this embeds the **public ProContent website** (`procontent.renewedvision.com`), signed in with the church's own account. Don't copy ProPresenter's private connection to Renewed Vision.
+- `desktop/procontent.js` opens a window with a small toolbar (`desktop/procontent-bar.html`) above the website. The website runs in its own session (`persist:procontent`), sandboxed and with no access to the app. Its sign-in is saved there. **Settings → ProContent → Sign out** clears it.
+- `will-download` on that session catches downloads. Videos and pictures are saved to a holding folder (`~/Library/Application Support/NC Kids Presenter/ProContent downloads`). `.zip` packs are unpacked there (`desktop/unzip.js`), and anything else goes to Downloads. The page is then told (`pc:download`, state `ready`) and imports the files with `Media.importBackgrounds` (copied on disk, not read into memory), marks them `source: 'procontent'` and sends `pc:done` so the holding folder is cleared.
+- The self-check serves a stand-in website with a pack and a loop, downloads both through the window and checks three backgrounds arrive. `tests/procontent-test.js` checks the page side.
+
 ### The library folder
 
 ```
@@ -103,7 +112,7 @@ media/logo-<id>.png
                   pco }],
   lessons:     [{ id, title, slides: [{ id, path, name }], thumb }],
   videos:      [{ id, title, path, thumb, duration }],
-  backgrounds: [{ id, title, type: 'video'|'image', path, thumb }],
+  backgrounds: [ /* source: 'procontent' for ProContent downloads */{ id, title, type: 'video'|'image', path, thumb }],
   playlists:   [{ id, title, date, pco?, items: [{ id, type: 'song'|'lesson'|'video'|'background'|'timer'|'label', ref, title? (labels), background?, arrangement? }] }],
   timers:      [{ id, title, seconds, message, chime, autoNext }],   // countdowns; standard set in store.js defaultTimers()
   settings:    { font, textColor, maxFontSize, uppercase, shadow, linesPerSlide, defaultBackground, ccliLicense, showCcliFooter, logo, audioDeviceId, ... }
@@ -128,6 +137,7 @@ python3 -m http.server 8765 --directory ..  &
 node e2e.js                   # imports everything, builds a playlist, runs it on a "TV" window
 ```
 
+`node procontent-test.js` checks adding ProContent downloads to Backgrounds (packs, single loops, unplayable files, the ProContent tag and search).
 `node remote-test.js` checks the phone remote (pairing, refusing unpaired phones, Next/Back/Clear/Black, tapping slides, timers, switching playlists, New code, Turn off).
 `node plan-import-test.js` checks importing a Planning Center plan (songs with plan order, JPEG slides, PDF pages, video, headers, skipped PowerPoint, re-import without duplicates).
 `node timer-test.js` checks the countdown timers (one-click start, pause, +1 min, custom, end message, playlist auto-advance).
