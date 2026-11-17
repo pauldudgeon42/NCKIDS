@@ -22,17 +22,19 @@
   }
 
   /** Load a video file, check Chrome can show it, and grab a frame. */
-  function probeVideo(file) {
+  function probeVideo(file) { return probeUrl(URL.createObjectURL(file), true); }
+  /** Same, for a URL (e.g. a video already saved in the library). */
+  function probeUrl(url, revoke) {
     return new Promise((resolve) => {
-      const url = URL.createObjectURL(file);
       const v = document.createElement('video');
+      if (!url.startsWith('blob:')) v.crossOrigin = 'anonymous'; // lets us draw a frame from library files
       v.muted = true; v.preload = 'auto'; v.playsInline = true;
       let done = false;
       const finish = (result) => {
         if (done) return; done = true;
         clearTimeout(timer);
         v.removeAttribute('src'); v.load();
-        URL.revokeObjectURL(url);
+        if (revoke) URL.revokeObjectURL(url);
         resolve(result);
       };
       const timer = setTimeout(() => finish({ ok: false, reason: 'took too long to open' }), 20000);
@@ -59,6 +61,41 @@
       c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
       return await canvasToBlob(c);
     } catch (e) { return null; }
+  }
+
+  // ---------- PDFs → slide pictures (PDF.js, in vendor/pdfjs) ----------
+  let pdfjs = null;
+  async function loadPdfJs() {
+    if (pdfjs) return pdfjs;
+    try {
+      pdfjs = await import(new URL('vendor/pdfjs/pdf.min.mjs', location.href).href);
+      pdfjs.GlobalWorkerOptions.workerSrc = new URL('vendor/pdfjs/pdf.worker.min.mjs', location.href).href;
+      return pdfjs;
+    } catch (e) {
+      throw new Error('PDFs can be turned into slides in the Mac app. (Chrome blocks it when the page is opened from a file.)');
+    }
+  }
+  /** Render every page of a PDF ({ url } or { data: ArrayBuffer }) to a JPEG about 1920 pixels wide. */
+  async function pdfPages(source, onPage) {
+    const lib = await loadPdfJs();
+    const task = lib.getDocument(source.url ? { url: source.url } : { data: source.data });
+    const doc = await task.promise;
+    const out = [];
+    for (let n = 1; n <= doc.numPages; n++) {
+      const page = await doc.getPage(n);
+      const base = page.getViewport({ scale: 1 });
+      const vp = page.getViewport({ scale: Math.min(4, 1920 / base.width) });
+      const c = document.createElement('canvas');
+      c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, c.width, c.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      out.push(await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.9)));
+      page.cleanup();
+      if (onPage) onPage(n, doc.numPages);
+    }
+    try { await (task.destroy ? task.destroy() : doc.destroy()); } catch (e) { /* already closed */ }
+    return out;
   }
 
   async function saveThumb(itemId, blob) {
@@ -142,6 +179,22 @@
       Store.data.settings.logo = path;
       Store.save();
       return path;
+    },
+
+    probeUrl,
+    pdfPages,
+    /** New lesson from a PDF file (each page becomes a slide). */
+    async importPdfLesson(file, title, onProgress) {
+      const pages = await pdfPages({ data: await file.arrayBuffer() }, (n, total) => onProgress && onProgress(`Turning page ${n} of ${total} into a slide`));
+      const lesson = { id: id(), title: title || baseName(file.name), slides: [], added: Date.now() };
+      for (let i = 0; i < pages.length; i++) {
+        const sid = id();
+        lesson.slides.push({ id: sid, path: await Store.writeFile(`media/lessons/${lesson.id}/${sid}.jpg`, pages[i]), name: `Page ${i + 1}` });
+      }
+      lesson.thumb = lesson.slides[0] && lesson.slides[0].path;
+      Store.data.lessons.push(lesson);
+      Store.save();
+      return lesson;
     },
 
     /** All files inside a folder the user picks (e.g. a curriculum bundle), recursively. */

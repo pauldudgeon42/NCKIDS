@@ -250,7 +250,8 @@ function registerIpc() {
   ipcMain.handle('http:request', async (e, url, opts = {}) => {
     const u = new URL(url);
     const host = u.hostname;
-    const ok = ALLOWED_HOSTS.includes(host) || (opts.followFrom && /(^|\.)amazonaws\.com$|(^|\.)planningcenteronline\.com$|(^|\.)planningcenterusercontent\.com$/.test(host));
+    // Attachment downloads use a short-lived link Planning Center hands out (often a storage server), sent without our token.
+    const ok = ALLOWED_HOSTS.includes(host) || (opts.download && u.protocol === 'https:' && !opts.headers);
     if (!ok) throw new Error('Not allowed: ' + host);
     const res = await net.fetch(url, { method: opts.method || 'GET', headers: opts.headers || {}, body: opts.body || undefined });
     const out = { status: res.status, ok: res.ok, retryAfter: res.headers.get('retry-after'), contentType: res.headers.get('content-type') || '' };
@@ -327,6 +328,8 @@ async function runSmokeTest(win) {
       await Store.remove('media/smoke.txt');
       r.removed = (await Store.readText('media/smoke.txt')) === null;
       PCO.saveCredentials('APP', 'SECRET'); r.secretRoundTrip = PCO.credentials().secret === 'SECRET'; PCO.forget();
+      const pdf = await (await fetch('app://local/desktop/selftest.pdf')).arrayBuffer();
+      r.pdfPages = (await Media.pdfPages({ data: pdf })).length;
       await Output.open();
       await new Promise((res) => setTimeout(res, 1500));
       r.tvOpen = Output.isOpen();
@@ -336,7 +339,7 @@ async function runSmokeTest(win) {
     })()`));
     const ok = results.desktop && results.libraryOpen && results.readBack === 'hello library' && results.served === 'hello library' &&
       results.rangeStatus === 206 && results.rangeText === 'library' && results.libraryJson && results.removed && results.secretRoundTrip &&
-      results.tvOpen && results.setupHidden && errors.length === 0;
+      results.tvOpen && results.setupHidden && results.pdfPages === 1 && errors.length === 0;
     clearTimeout(timer);
     done(ok ? 0 : 1);
   } catch (e) {

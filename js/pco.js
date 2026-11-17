@@ -125,6 +125,78 @@
       })).sort((a, b) => (b.lyrics ? 1 : 0) - (a.lyrics ? 1 : 0));
     },
 
+    // ---------- plans (service orders) ----------
+    async serviceTypes() {
+      const rows = await this.getAll('/service_types?per_page=100&order=sequence');
+      return rows.map((r) => ({ id: r.id, name: r.attributes.name }));
+    },
+
+    /** Upcoming plans first, then the last few past ones. */
+    async plans(serviceTypeId) {
+      const st = encodeURIComponent(serviceTypeId);
+      const map = (r) => ({ id: r.id, title: r.attributes.title || '', dates: r.attributes.dates || r.attributes.short_dates || '',
+        sortDate: r.attributes.sort_date || '', items: r.attributes.items_count || 0, series: r.attributes.series_title || '' });
+      const future = (await this.get(`/service_types/${st}/plans?filter=future&order=sort_date&per_page=12`)).data || [];
+      const past = (await this.get(`/service_types/${st}/plans?filter=past&order=-sort_date&per_page=6`)).data || [];
+      return { future: future.map(map), past: past.map(map) };
+    },
+
+    /** The order of service, with songs and arrangements filled in. */
+    async planItems(serviceTypeId, planId) {
+      const path = `/service_types/${encodeURIComponent(serviceTypeId)}/plans/${encodeURIComponent(planId)}/items?per_page=100&include=song,arrangement`;
+      const out = [];
+      const included = {};
+      let next = path;
+      while (next) {
+        const page = await this.get(next);
+        for (const inc of page.included || []) included[inc.type + ':' + inc.id] = inc;
+        out.push(...(page.data || []));
+        next = page.links && page.links.next;
+      }
+      return out.map((r) => {
+        const a = r.attributes || {}, rel = r.relationships || {};
+        const songRef = rel.song && rel.song.data, arrRef = rel.arrangement && rel.arrangement.data;
+        const song = songRef && included['Song:' + songRef.id];
+        const seq = a.custom_arrangement_sequence_full || a.custom_arrangement_sequence || null;
+        return {
+          id: r.id, kind: a.item_type || 'item', title: (a.title || '').trim() || 'Untitled', self: r.links && r.links.self,
+          songId: songRef && songRef.id, arrangementId: arrRef && arrRef.id,
+          customSequence: Array.isArray(seq) && seq.length ? seq : null,
+          song: song && { id: song.id, title: song.attributes.title || a.title, author: song.attributes.author || '',
+            copyright: song.attributes.copyright || '', ccli: song.attributes.ccli_number ? String(song.attributes.ccli_number) : '' },
+        };
+      });
+    },
+
+    /** Files attached to a plan item (and to its Planning Center Media, for media items). */
+    async itemAttachments(serviceTypeId, planId, item) {
+      const base = item.self || `${API}/service_types/${encodeURIComponent(serviceTypeId)}/plans/${encodeURIComponent(planId)}/items/${encodeURIComponent(item.id)}`;
+      const map = (r) => ({ id: r.id, filename: r.attributes.filename || r.attributes.display_name || 'file', contentType: r.attributes.content_type || '',
+        size: r.attributes.file_size || 0, linked: !!r.attributes.linked_url, self: r.links && r.links.self, updated: r.attributes.updated_at || '' });
+      let atts = (await this.getAll(base + '/attachments?per_page=100')).map(map);
+      if (!atts.length && item.kind === 'media') {
+        for (const m of await this.getAll(base + '/media?per_page=25')) {
+          const mself = (m.links && m.links.self) || `${API}/media/${m.id}`;
+          atts.push(...(await this.getAll(mself + '/attachments?per_page=100')).map(map));
+        }
+      }
+      return atts.filter((x) => !x.linked);
+    },
+
+    /** Download one attachment into the library (Mac app only). Returns the saved library path. */
+    async downloadAttachment(att, saveTo) {
+      const c = loadCreds();
+      const headers = { Authorization: 'Basic ' + btoa(c.appId + ':' + c.secret), Accept: 'application/json', 'Content-Type': 'application/json' };
+      const res = await pcoFetch(att.self + '/open', headers, { method: 'POST', body: JSON.stringify({ data: {} }) });
+      if (!res.ok) throw new PcoError(`Planning Center wouldn't open “${att.filename}” (${res.status}).`, 'http');
+      const body = await res.json();
+      const url = body && body.data && body.data.attributes && (body.data.attributes.attachment_url || body.data.attributes.url);
+      if (!url) throw new PcoError(`Planning Center didn't give a download link for “${att.filename}”.`, 'http');
+      const r = await window.NCDesktop.http.request(url, { download: true, saveTo });
+      if (!r.ok) throw new PcoError(`Downloading “${att.filename}” failed (${r.status}).`, 'http');
+      return saveTo;
+    },
+
     /** Turn a PCO song + arrangement into a song for this app. */
     toSong(pcoSong, arr) {
       return {
