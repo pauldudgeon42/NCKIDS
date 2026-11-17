@@ -3,6 +3,29 @@
 Plain-English notes on what changed in each version. Newest first.
 Version numbers: **major.minor.fix**. A new minor number means new features, and a new fix number means bug fixes only.
 
+## v1.4.0: polish and ProContent sign-in (November 2026)
+
+**ProContent**
+- The ProContent window opens on **Browse Media**, and the toolbar's home button goes there too.
+- **Stays signed in:** the app keeps ProContent's sign-in when it quits. Before, it was forgotten each time because the website stores it in a "session" cookie.
+- **Saved sign-in (Settings → ProContent):** save the church's ProContent email and password once (encrypted in the Mac's Keychain). Whenever ProContent asks you to sign in, the app fills them in and signs in, then goes back to Browse Media. They're only ever filled in on ProContent's own website. **Change** and **Forget saved sign-in** are there too.
+
+**Lyrics on the TV**
+- A line that's a little too long now shrinks slightly to stay on one line instead of leaving one word on its own ("…let it / shine").
+- Lines that really are too long split into even halves ("There's a fountain flowing / deep and wide", not "…flowing deep and / wide"). This also makes imported songs look like the rest.
+
+**Look and feel**
+- In dark Build mode, the main buttons (New, Present this playlist…) were nearly invisible. They're now the accent color.
+- Playlist editor: song titles no longer get squeezed to three letters by the Background picker. On narrow windows the picker moves under the title, and the row of buttons above the list wraps instead of running off the edge.
+- Smaller screens (e.g. a 13" laptop): the top bar compacts so Start TV is always visible, and the Song order column no longer gets cut off.
+- Search boxes in side columns no longer get squashed thin.
+- Videos and Backgrounds: long names end in "…" (hover for the full name), and the delete button sits at the end of the row.
+- Timers in Present mode show their full names on two lines instead of "Activity ti…".
+- Present mode: the empty TV preview says "Nothing on the TV yet. Press Next or click a slide."
+- Bigger click targets for the small × on song-order chips, "+ Chorus" and "Tidy up these lyrics".
+- The Mac app remembers its window size and position.
+- Song editor slide previews scale their words like the TV does.
+
 ## v1.3.1: fixes (November 2026)
 
 - **Lessons import works again in the Mac app.** New lessons (from pictures, a folder, a PDF or dragged in) asked for a name with a browser box that the Mac app can't show, so nothing happened. The app now asks with its own pop-up. Adding a section label to a playlist had the same problem and is fixed too.

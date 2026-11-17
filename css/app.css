@@ -92,6 +92,7 @@ a { color: var(--accent-text); }
   transition: background-color .15s, border-color .15s, filter .15s;
 }
 html[data-theme="dark"] .btn { background: var(--panel-2); border-color: transparent; }
+html[data-theme="dark"] .btn.primary { background: var(--accent); color: var(--accent-ink); }
 .btn:hover { border-color: var(--muted); }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 .btn.primary:hover { filter: brightness(1.07); }
@@ -358,7 +359,7 @@ ol.steps li, ul.steps li { margin-bottom: 4px; }
 
 /* ---------- toasts, busy, modal ---------- */
 #toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 30px); background: var(--text); color: var(--bg); padding: 12px 20px; border-radius: 14px;
-         box-shadow: 0 10px 30px rgba(0, 0, 0, .25); opacity: 0; pointer-events: none; transition: all .25s; z-index: 50; max-width: 80vw; font-weight: 600; }
+         box-shadow: 0 10px 30px rgba(0, 0, 0, .25); opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; z-index: 50; max-width: 80vw; font-weight: 600; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 #toast.error { background: var(--danger); color: #FFFFFF; }
 .busy { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: none; align-items: center; justify-content: center; z-index: 40; }
@@ -527,3 +528,79 @@ html.desktop .desktop-only { display: inline-flex !important; }
 .ask-input { font: inherit; font-weight: 500; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--sunken, var(--panel)); color: var(--text); }
 .ask-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .ask-btns { justify-content: flex-end; }
+
+/* ---------- v1.4 polish ---------- */
+/* Columns scroll as a whole; nothing inside them gets squashed thin. */
+.col > * { flex-shrink: 0; }
+.col-main { min-width: 300px; }
+.row.gap { flex-wrap: wrap; }
+
+/* Playlist editor rows: the title gets the room, the background picker stays compact. */
+#pl-items { container-type: inline-size; }
+.pl-items .name { min-width: 0; flex: 1 1 140px; }
+.pl-items .name .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-items .name small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bg-pick { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; font-size: 13px; color: var(--muted); }
+.bg-pick select { max-width: 170px; min-width: 110px; height: 36px; }
+@container (max-width: 560px) { .bg-pick .lbl { display: none; } }
+
+/* Media cards: delete sits at the end of the row; long names show "…" */
+.media-card .media-del { margin-left: auto; }
+.media-title { text-overflow: ellipsis; }
+
+/* Bigger click targets for small controls */
+.o-x { padding: 4px; margin: -4px -6px -4px -2px; border-radius: 999px; }
+.o-x:hover { background: rgba(0, 0, 0, .08); }
+.o-add { padding: 5px 12px; }
+.link-btn { padding: 4px 2px; }
+
+/* Timers: names use two lines instead of "Activity ti…" */
+.timer-chip { height: auto; min-height: 46px; padding: 6px 12px; }
+.timer-chip .t-name { white-space: normal; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.timer-chip .t-time { flex: none; }
+
+/* Top bar on narrower screens (e.g. a 13" laptop) */
+.brand-name { white-space: nowrap; }
+@media (max-width: 1180px) {
+  #topbar { gap: 12px; padding: 0 16px; }
+  .brand-name { display: none; }
+  #save-status { display: none; }
+  .build-tabs button { padding: 8px 9px; }
+  .modes button { padding: 8px 16px; }
+  .tv-btn { padding-left: 14px; padding-right: 14px; }
+  .build-body, .present { padding-left: 16px; padding-right: 16px; gap: 14px; }
+  .col-side { width: 270px; }
+}
+
+/* Present: a hint in the TV preview before anything has been shown */
+.live-wrap { position: relative; }
+.live-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+  color: rgba(255, 255, 255, .62); font-size: 14px; line-height: 1.5; pointer-events: none; border-radius: 16px; }
+.live-empty b { color: rgba(255, 255, 255, .9); }
+
+/* Videos / Backgrounds header: a sensible search box, buttons beside it */
+.media-head { justify-content: flex-end; }
+.media-head #media-search { width: 220px; flex: 0 1 220px; min-width: 140px; }
+
+/* Playlist rows in a narrow column: the background picker goes on its own line */
+@container (max-width: 470px) {
+  /* grip, icon, name, up, down, remove on the first line; the background picker under the name */
+  .pl-items li { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto auto; column-gap: 10px; row-gap: 6px; }
+  .pl-items .bg-pick { grid-column: 3 / -1; grid-row: 2; }
+  .bg-pick select { max-width: none; flex: 1; }
+}
+
+/* Song editor slide previews: balanced lines, no single word left on its own */
+.se-text { text-wrap: balance; }
+.se-text > * { text-wrap: balance; }
+
+/* Settings → ProContent */
+.set-sub { margin: 22px 0 6px; font-size: 16px; }
+.pc-saved { display: flex; align-items: center; gap: 8px; margin: 6px 0 12px; color: var(--accent-text); font-weight: 600; }
+.pc-saved b { color: var(--text); }
+.pc-login { max-width: 640px; align-items: end; margin: 6px 0 8px; }
+.pc-login label { display: flex; flex-direction: column; gap: 6px; font-weight: 700; font-size: 13px; }
+
+/* Song editor slide previews: words scale with the preview, like on the TV */
+.se-slide { container-type: inline-size; }
+.se-text { font-size: clamp(10px, 5.4cqw, 18px); }

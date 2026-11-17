@@ -18,6 +18,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       signOut: async () => { window.__pc.signedOut++; return true; },
       done: (id) => window.__pc.done.push(id),
       onDownload(cb) { window.__pc.send = cb; },
+      secrets: { store: {}, get(k) { return this.store[k] || null; }, set(k, v) { this.store[k] = v; return true; }, remove(k) { delete this.store[k]; return true; } },
     };
   });
   const page = await ctx.newPage();
@@ -77,6 +78,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('[data-sec=procontent]');
   check('Settings → ProContent counts downloads', (await page.textContent('#set-main')).includes('4 backgrounds came from ProContent'));
   await page.screenshot({ path: OUT + 'procontent-2-settings.png' });
+  // Saved sign-in
+  await page.fill('#pc-email', 'kids@example.org');
+  await page.click('#pc-save');
+  check('password is required', (await page.evaluate(() => NCProContentBridge.secrets.store['procontent.email'])) === undefined);
+  await page.fill('#pc-pass', 'secret pass');
+  await page.click('#pc-save');
+  await page.waitForSelector('.pc-saved');
+  check('sign-in saved', (await page.textContent('.pc-saved')).includes('kids@example.org') &&
+    (await page.evaluate(() => NCProContentBridge.secrets.store['procontent.password'])) === 'secret pass');
+  check('password never shown on the page', !(await page.content()).includes('secret pass'));
+  await page.screenshot({ path: OUT + 'procontent-3-saved.png' });
+  await page.click('#pc-forget');
+  await page.waitForSelector('#pc-login');
+  check('forget removes it', !(await page.evaluate(() => Object.keys(NCProContentBridge.secrets.store).length)));
   await page.click('#pc-signout');
   await sleep(200);
   check('sign out', (await page.evaluate(() => window.__pc.signedOut)) === 1);

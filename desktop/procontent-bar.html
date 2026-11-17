@@ -27,7 +27,7 @@
   <button id="back" title="Back (⌘[)" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
   <button id="forward" title="Forward (⌘])" aria-label="Forward"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
   <button id="reload" title="Reload (⌘R)" aria-label="Reload"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
-  <button id="home" title="ProContent home">Home</button>
+  <button id="home" title="Browse Media">Browse Media</button>
   <span class="spin"></span><span class="host" id="host"></span>
   <span class="spacer"></span>
   <span id="status" class="note">Download any motion background or pack, and it goes straight into Backgrounds.</span>
@@ -40,7 +40,10 @@
     document.body.classList.toggle('loading', st.loading);
     document.getElementById('host').textContent = st.host;
     const s = document.getElementById('status');
-    if (st.downloads.length) {
+    if (st.note && !st.downloads.length) {
+      s.className = 'dl';
+      s.textContent = st.note;
+    } else if (st.downloads.length) {
       const d = st.downloads[0];
       s.className = 'dl';
       s.textContent = (d.unpacking ? 'Unpacking ' : 'Downloading ') + d.name + (d.unpacking || d.pct === null ? '…' : ` ${d.pct}%`) + (st.downloads.length > 1 ? ` (+${st.downloads.length - 1} more)` : '');

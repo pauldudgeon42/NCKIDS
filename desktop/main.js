@@ -138,9 +138,22 @@ function placeTv(win) {
   return true;
 }
 
+/** Where the window was last time, if that spot is still on a connected screen. */
+function savedBounds() {
+  const b = readConfig().windowBounds;
+  if (!b || !(b.width >= 1100 && b.height >= 700)) return null;
+  const onScreen = screen.getAllDisplays().some((d) => {
+    const a = d.workArea;
+    return b.x + 100 < a.x + a.width && b.x + b.width - 100 > a.x && b.y >= a.y - 10 && b.y + 60 < a.y + a.height;
+  });
+  return onScreen ? b : null;
+}
+
 function createMainWindow() {
+  const b = SMOKE ? null : savedBounds();
   mainWindow = new BrowserWindow({
-    width: 1440, height: 900, minWidth: 1100, minHeight: 700,
+    width: b ? b.width : 1440, height: b ? b.height : 900, x: b ? b.x : undefined, y: b ? b.y : undefined,
+    minWidth: 1100, minHeight: 700,
     title: 'NC Kids Presenter',
     backgroundColor: '#F3F4F6',
     show: !SMOKE || process.env.NC_SMOKE_SHOW === '1',
@@ -150,6 +163,14 @@ function createMainWindow() {
       sandbox: true,
       spellcheck: true,
     },
+  });
+  if (b && b.maximized) mainWindow.maximize();
+  // Remember the size and place for next time.
+  mainWindow.on('close', () => {
+    if (SMOKE || mainWindow.isFullScreen()) return;
+    const c = readConfig();
+    c.windowBounds = Object.assign(mainWindow.getNormalBounds(), { maximized: mainWindow.isMaximized() });
+    writeConfig(c);
   });
   mainWindow.webContents.setWindowOpenHandler(({ url, frameName }) => {
     if (frameName === 'nckids_tv') {
@@ -322,6 +343,15 @@ app.on('before-quit', () => remote.stop());
 
 // ---------- ProContent ----------
 let procontent = null;
+/** Read a saved secret (encrypted with the Mac Keychain); used for the ProContent sign-in. */
+function readSecret(key) {
+  try {
+    const all = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'secrets.json'), 'utf8'));
+    const v = all[key];
+    if (!v) return null;
+    return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(Buffer.from(v, 'base64')) : v;
+  } catch (e) { return null; }
+}
 let smokeServer = null; // the self-check's stand-in for the ProContent website
 
 // ---------- self-check for GitHub Actions ----------
@@ -329,14 +359,45 @@ let smokeServer = null; // the self-check's stand-in for the ProContent website
 function startSmokeSite() {
   const http = require('http');
   const files = { '/loop.mp4': ['selftest-loop.mp4', 'video/mp4', 'Smoke Loop.mp4'], '/pack.zip': ['selftest-pack.zip', 'application/zip', 'Selftest Pack.zip'] };
+  const LOGIN_PAGE = `<!doctype html><title>Sign in</title><div id="app"></div><script>
+    // Built by script like the real site, with fields that only count typed (input) changes.
+    const app = document.getElementById('app');
+    app.innerHTML = '<form><label>Email <input type="email" id="e"></label><label>Password <input type="password" id="p"></label>' +
+      '<label><input type="checkbox" id="r"> Remember me</label><button type="submit">Sign In</button></form>';
+    const state = { e: '', p: '' };
+    document.getElementById('e').addEventListener('input', (ev) => { state.e = ev.target.value; });
+    document.getElementById('p').addEventListener('input', (ev) => { state.p = ev.target.value; });
+    document.querySelector('form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const r = await fetch('/session', { method: 'POST', body: JSON.stringify(state) });
+      if (r.ok) location.href = '/account'; else document.title = 'Wrong password';
+    });
+  </script>`;
   smokeServer = http.createServer((req, res) => {
+    const cookie = req.headers.cookie || '';
+    if (req.url === '/session' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (d) => { body += d; });
+      req.on('end', () => {
+        const b = JSON.parse(body || '{}');
+        if (b.e === 'kids@example.org' && b.p === 'pa55 "word"') { res.writeHead(200, { 'Set-Cookie': 'pc_session=ok; Path=/; HttpOnly' }); res.end('{}'); }
+        else { res.writeHead(403); res.end('{}'); }
+      });
+      return;
+    }
+    if (req.url === '/login') { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end(LOGIN_PAGE); return; }
+    if (req.url === '/search' || req.url === '/account' || req.url === '/') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(`<!doctype html><title>Stand-in ProContent ${req.url}</title>` + (/pc_session=ok/.test(cookie) ? '<p>Signed in</p><a href="/pack.zip">Pack</a>' : '<a href="/login">Sign In</a>'));
+      return;
+    }
     const f = files[req.url];
-    if (!f) { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end('<!doctype html><title>Stand-in ProContent</title><a href="/pack.zip">Pack</a>'); return; }
+    if (!f) { res.writeHead(404); res.end(); return; }
     const buf = fs.readFileSync(path.join(__dirname, f[0]));
     res.writeHead(200, { 'Content-Type': f[1], 'Content-Length': buf.length, 'Content-Disposition': `attachment; filename="${f[2]}"` });
     res.end(buf);
   }).listen(8799, '127.0.0.1');
-  return 'http://127.0.0.1:8799/';
+  return 'http://127.0.0.1:8799/search';
 }
 
 // ---------- self-check for GitHub Actions ----------
@@ -412,10 +473,18 @@ async function runSmokeTest(win) {
     } catch (e) { results.remoteError = String((e && e.stack) || e); }
     // ProContent: open the window, download a pack and a single loop, and check they land in Backgrounds.
     try {
+      // Saved sign-in: the window should go to the sign-in page, fill it in, sign in and come back to Browse Media.
+      await js(`NCDesktop.secrets.set('procontent.email', 'kids@example.org'), NCDesktop.secrets.set('procontent.password', 'pa55 "word"')`);
       await js(`NCApp.openProContent()`);
-      const until = Date.now() + 8000;
-      while (!(procontent.site && procontent.site.webContents.getURL().startsWith('http://127.0.0.1:8799')) && Date.now() < until) await new Promise((r) => setTimeout(r, 200));
+      const until = Date.now() + 20000;
+      const signedIn = async () => procontent.site && /\/search$/.test(procontent.site.webContents.getURL()) &&
+        (await procontent.site.webContents.executeJavaScript('document.body.textContent').catch(() => '')).includes('Signed in');
+      while (!(await signedIn()) && Date.now() < until) await new Promise((r) => setTimeout(r, 300));
       results.pcWindow = !!procontent.window;
+      results.pcSignedIn = await signedIn();
+      await procontent.keepSignedIn();
+      const ck = (await session.fromPartition('persist:procontent').cookies.get({ name: 'pc_session' }))[0];
+      results.pcCookieKept = !!ck && !ck.session && ck.expirationDate > Date.now() / 1000 + 100 * 86400;
       const bgs = () => js(`Store.data.backgrounds.filter((b) => b.source === 'procontent').map((b) => b.title + ':' + b.type + ':' + !!b.thumb).sort().join(',')`);
       procontent.site.webContents.downloadURL('http://127.0.0.1:8799/pack.zip');
       for (let i = 0; i < 60 && !(await bgs()).includes('Selftest Still'); i++) await new Promise((r) => setTimeout(r, 250));
@@ -428,7 +497,7 @@ async function runSmokeTest(win) {
       results.rangeStatus === 206 && results.rangeText === 'library' && results.libraryJson && results.removed && results.secretRoundTrip &&
       results.tvOpen && results.setupHidden && results.pdfPages === 1 &&
       results.remotePage && results.remotePaired && results.remoteRefused && results.remoteCmd && results.remoteEvents && results.remoteStatus &&
-      results.pcWindow && results.pcBackgrounds === 'Selftest Loop:video:true,Selftest Still:image:true,Smoke Loop:video:true' &&
+      results.pcWindow && results.pcSignedIn && results.pcCookieKept && results.pcBackgrounds === 'Selftest Loop:video:true,Selftest Still:image:true,Smoke Loop:video:true' &&
       errors.length === 0;
     clearTimeout(timer);
     done(ok ? 0 : 1);
@@ -452,8 +521,10 @@ app.whenReady().then(() => {
     getMainWindow: () => mainWindow,
     hasLibrary: () => !!libraryPath,
     allowFile: (f) => pickedFiles.add(f),
+    getSecret: readSecret,
     show: !SMOKE || process.env.NC_SMOKE_SHOW === '1',
     home: SMOKE ? startSmokeSite() : undefined,
+    siteDomain: SMOKE ? '127.0.0.1' : undefined,
   });
   if (SMOKE) runSmokeTest(win);
   app.on('activate', () => { if (!mainWindow) createMainWindow(); });

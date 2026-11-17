@@ -97,6 +97,9 @@ GitHub sometimes has no Mac machines free, and the build-mac job waits and then 
 - There's no ProContent API for other apps, so this embeds the **public ProContent website** (`procontent.renewedvision.com`), signed in with the church's own account. Don't copy ProPresenter's private connection to Renewed Vision.
 - `desktop/procontent.js` opens a window with a small toolbar (`desktop/procontent-bar.html`) above the website. The website runs in its own session (`persist:procontent`), sandboxed and with no access to the app. Its sign-in is saved there. **Settings → ProContent → Sign out** clears it.
 - `will-download` on that session catches downloads. Videos and pictures are saved to a holding folder (`~/Library/Application Support/NC Kids Presenter/ProContent downloads`). `.zip` packs are unpacked there (`desktop/unzip.js`), and anything else goes to Downloads. The page is then told (`pc:download`, state `ready`) and imports the files with `Media.importBackgrounds` (copied on disk, not read into memory), marks them `source: 'procontent'` and sends `pc:done` so the holding folder is cleared.
+- **Staying signed in:** `keepSignedIn()` turns ProContent's session cookies into ones that last 180 days, after each page change, when the window closes and when the app quits.
+- **Saved sign-in:** Settings → ProContent saves `procontent.email` / `procontent.password` with the app's secrets (Keychain-encrypted, in the app's own folder, never the library). On a ProContent `/login` page, `FILL_SCRIPT` runs in an isolated world (the page's scripts can't read it), fills the fields the way typing would, ticks "remember me" and presses Sign In. It stops after two tries, so a wrong password doesn't loop, and it only runs on renewedvision.com. `tests/pcfill-check.js` tries the filler on a script-built form.
+- The self-check's stand-in site has a sign-in page with a session cookie. The self-check checks that the window signs in by itself, lands on Browse Media, and that the cookie is kept.
 - The self-check serves a stand-in website with a pack and a loop, downloads both through the window and checks three backgrounds arrive. `tests/procontent-test.js` checks the page side.
 
 ### The library folder
@@ -147,6 +150,7 @@ python3 -m http.server 8765 --directory ..  &
 node e2e.js                   # imports everything, builds a playlist, runs it on a "TV" window
 ```
 
+`node ui-audit.js [1280x800 …]` fills a demo library, visits every screen at a few window sizes, saves screenshots to `tests/shots/audit-*.png`, and lists overlapping, cut-off or tiny elements. Run it after changing the look.
 `node lyrics-test.js` checks the lyric cleanup on chord-chart cases (no browser needed).
 `node procontent-test.js` checks adding ProContent downloads to Backgrounds (packs, single loops, unplayable files, the ProContent tag and search).
 `node remote-test.js` checks the phone remote (pairing, refusing unpaired phones, Next/Back/Clear/Black, tapping slides, timers, switching playlists, New code, Turn off).

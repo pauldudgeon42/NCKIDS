@@ -16,7 +16,7 @@
   <header id="topbar" class="hidden">
     <div class="brand">
       <span class="brand-mark"><svg class="i" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5L2.6 9.3l6.5-.9z"/></svg></span>
-      NC Kids
+      <span class="brand-name">NC Kids</span>
     </div>
     <nav id="modes" class="modes" aria-label="Mode">
       <button data-mode="present" class="active">Present</button>
@@ -73,7 +73,8 @@
 
     <aside class="p-col p-right card">
       <div class="live-head"><h3>On the TV</h3><span class="live-pill">Live</span></div>
-      <div id="live-preview" class="live-preview"></div>
+      <div class="live-wrap"><div id="live-preview" class="live-preview"></div>
+        <div id="live-empty" class="live-empty"><span>Nothing on the TV yet.<br>Press <b>Next</b> or click a slide.</span></div></div>
 
       <div id="video-controls" class="video-controls hidden">
         <div class="vc-track"><div id="vc-bar" class="vc-bar"></div></div>

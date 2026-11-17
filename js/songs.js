@@ -139,8 +139,9 @@
   let measureCtx = null;
   function setFont(style) {
     if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
-    // Text may shrink up to 20% to keep a line whole before it counts as two lines.
-    const size = (Number(style.maxFontSize) || 110) * 0.8;
+    // The TV shrinks text (down to 60%, see fitText in renderer.js) to keep a line whole,
+    // so a line only counts as two once it won't fit even at that size.
+    const size = Math.max(40, (Number(style.maxFontSize) || 110) * 0.6);
     measureCtx.font = `700 ${size}px "${style.font || 'Avenir Next'}", "Avenir Next", "Helvetica Neue", Arial, sans-serif`;
   }
   function textWidth(t, style) {
@@ -150,15 +151,27 @@
   function wrapLine(line, style) {
     if (typeof document === 'undefined' || textWidth(line, style) <= TEXT_WIDTH) return [line];
     const words = line.split(/\s+/);
-    const out = [];
-    let cur = '';
-    for (const w of words) {
-      const next = cur ? cur + ' ' + w : w;
-      if (!cur || textWidth(next, style) <= TEXT_WIDTH) cur = next;
-      else { out.push(cur); cur = w; }
+    const greedy = (limit) => {
+      const out = [];
+      let cur = '';
+      for (const w of words) {
+        const next = cur ? cur + ' ' + w : w;
+        if (!cur || textWidth(next, style) <= limit) cur = next;
+        else { out.push(cur); cur = w; }
+      }
+      if (cur) out.push(cur);
+      return out;
+    };
+    // As few lines as fit, then made as even as possible, so no word is left on its own:
+    // "There's a fountain flowing / deep and wide", not "…flowing deep and / wide".
+    const lines = greedy(TEXT_WIDTH);
+    const k = lines.length;
+    let best = lines;
+    for (let limit = textWidth(line, style) / k; limit < TEXT_WIDTH; limit += 24) {
+      const tryLines = greedy(limit);
+      if (tryLines.length <= k) { best = tryLines; break; }
     }
-    if (cur) out.push(cur);
-    return out;
+    return best;
   }
   /**
    * Split a group of lines into slides of at most `max` on-screen lines.
