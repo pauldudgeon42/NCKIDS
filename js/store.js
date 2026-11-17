@@ -113,11 +113,19 @@
     onError: null,
 
     supported() {
-      return typeof window.showDirectoryPicker === 'function';
+      return !!window.NCDesktop || typeof window.showDirectoryPicker === 'function';
     },
+    /** True when the open library is a folder on disk handled by the Mac app. */
+    isDesktop() { return !!(this.root && this.root.desktop); },
 
     /** Look for a folder remembered from last time. Returns 'ready' | 'needs-permission' | 'none'. */
     async restore() {
+      if (window.NCDesktop) {
+        const lib = await NCDesktop.library.current();
+        if (!lib) return 'none';
+        await this.open({ desktop: true, name: lib.name });
+        return 'ready';
+      }
       let handle = null;
       try { handle = await idbGet('library'); } catch (e) { /* no IndexedDB */ }
       if (!handle) return 'none';
@@ -140,6 +148,12 @@
 
     /** Must be called from a click. */
     async choose() {
+      if (window.NCDesktop) {
+        const lib = await NCDesktop.library.choose();
+        if (!lib) { const e = new Error('Cancelled'); e.name = 'AbortError'; throw e; }
+        await this.open({ desktop: true, name: lib.name });
+        return;
+      }
       const handle = await window.showDirectoryPicker({ id: 'nckids-library', mode: 'readwrite' });
       await this.open(handle);
       try { await idbSet('library', handle); } catch (e) { /* ignore */ }
@@ -148,7 +162,7 @@
     async open(handle) {
       this.root = handle;
       this.folderName = handle.name;
-      for (const url of this._urls.values()) URL.revokeObjectURL(url);
+      for (const url of this._urls.values()) if (url.startsWith('blob:')) URL.revokeObjectURL(url);
       this._urls.clear();
       const existing = await this.readText(DATA_FILE);
       if (existing) {
@@ -179,6 +193,7 @@
       return d.getFileHandle(name, { create });
     },
     async readText(path) {
+      if (this.isDesktop()) return NCDesktop.fs.readText(path);
       try {
         const fh = await this.fileHandle(path);
         return await (await fh.getFile()).text();
@@ -188,6 +203,16 @@
       }
     },
     async writeFile(path, contents) {
+      if (this.isDesktop()) {
+        if (typeof contents === 'string') await NCDesktop.fs.writeText(path, contents);
+        else {
+          const src = (contents && contents.ncPath) || (contents instanceof File && NCDesktop.pathForFile(contents));
+          if (src) await NCDesktop.fs.copyIn(src, path);
+          else await NCDesktop.fs.writeBytes(path, new Uint8Array(await contents.arrayBuffer()));
+        }
+        this._urls.delete(path);
+        return path;
+      }
       const fh = await this.fileHandle(path, true);
       const w = await fh.createWritable();
       if (contents && typeof contents.stream === 'function') {
@@ -205,6 +230,11 @@
     /** An object URL for a library file, cached. Returns null if missing. */
     async url(path) {
       if (!path) return null;
+      if (this.isDesktop()) {
+        // a version number makes the page reload a file that was replaced (e.g. a new logo)
+        if (!this._urls.has(path)) this._urls.set(path, NCDesktop.fs.url(path) + '?v=' + Date.now().toString(36));
+        return this._urls.get(path);
+      }
       if (this._urls.has(path)) return this._urls.get(path);
       try {
         const url = URL.createObjectURL(await this.getFile(path));
@@ -217,6 +247,7 @@
     },
     cachedUrl(path) { return this._urls.get(path) || null; },
     async remove(path) {
+      if (this.isDesktop()) { await NCDesktop.fs.remove(path); this._urls.delete(path); return; }
       try {
         const { dir, name } = this.splitPath(path);
         const d = await this.dir(dir, false);
@@ -257,6 +288,11 @@
       const name = `${BACKUP_DIR}/library-${today}.json`;
       if (await this.readText(name)) return;
       await this.writeFile(name, current);
+      if (this.isDesktop()) {
+        const names = (await NCDesktop.fs.list(BACKUP_DIR)).filter((n) => n.startsWith('library-')).sort();
+        while (names.length > MAX_BACKUPS) await NCDesktop.fs.remove(`${BACKUP_DIR}/${names.shift()}`);
+        return;
+      }
       // prune old backups
       const d = await this.dir(BACKUP_DIR);
       const names = [];

@@ -481,3 +481,4 @@ html[data-theme="dark"] .timer-chip { border-color: transparent; }
 .timer-row label.check { flex-direction: row; align-items: center; height: 40px; font-size: 13px; font-weight: 600; }
 .timer-row .icon-btn { margin-bottom: 3px; }
 .p-right > *, .p-left > * { flex-shrink: 0; }
+html.desktop .browser-only { display: none !important; }

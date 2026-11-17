@@ -39,7 +39,8 @@
       if (this.isOpen()) { this.win.focus(); return; }
       let features = 'popup,width=1280,height=720';
       try {
-        if ('getScreenDetails' in window) {
+        // The Mac app puts the TV window on the TV by itself.
+        if (!window.NCDesktop && 'getScreenDetails' in window) {
           const details = await window.getScreenDetails();
           const other = details.screens.find((s) => s !== details.currentScreen) || null;
           if (other) features = `popup,left=${other.availLeft},top=${other.availTop},width=${other.availWidth},height=${other.availHeight}`;
@@ -77,6 +78,7 @@
       const goFull = () => doc.documentElement.requestFullscreen().catch(() => {});
       doc.getElementById('fs').addEventListener('click', goFull);
       doc.addEventListener('fullscreenchange', () => doc.body.classList.toggle('full', !!doc.fullscreenElement));
+      if (window.NCDesktop) doc.body.classList.add('full'); // the Mac app already made the window fill the TV
       doc.addEventListener('keydown', (e) => {
         if ((e.key === 'f' || e.key === 'F') && !doc.fullscreenElement) { goFull(); return; }
         if (this.onKey) this.onKey(e);
