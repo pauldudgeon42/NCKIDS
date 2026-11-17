@@ -16,6 +16,7 @@ Version numbers: **major.minor.fix**. A new minor number means new features, and
 - **Section labels** can also be added by hand (Playlists → **Section label**). They show as headings in Present mode and are skipped by Next.
 - **Lessons → From a PDF…** turns any PDF into a lesson, one slide per page.
 - Playlist numbers no longer count section labels.
+- The Mac app now runs on Electron 39 (needed for the PDF reader).
 
 ## v1.0.0 — the Mac app (November 2026)
 
