@@ -11,6 +11,12 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      mac_runner:
+        description: 'Which GitHub Mac machine builds the app (the app works on every Mac either way)'
+        type: choice
+        options: [macos-15-intel, macos-latest]
+        default: macos-15-intel
 
 permissions:
   contents: write
@@ -30,8 +36,12 @@ jobs:
 
   build-mac:
     needs: self-check
-    runs-on: macos-latest
-    timeout-minutes: 30
+    # An Intel Mac machine builds the same universal app (Apple Silicon + Intel) as an Apple
+    # Silicon one, and GitHub usually has more of them free. To switch, set the repository
+    # variable MAC_RUNNER (Settings → Secrets and variables → Actions → Variables) to macos-latest,
+    # or pick it when running the workflow by hand.
+    runs-on: ${{ inputs.mac_runner || vars.MAC_RUNNER || 'macos-15-intel' }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
