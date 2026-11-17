@@ -331,7 +331,7 @@ async function runSmokeTest(win) {
       try {
         const pdf = await (await fetch('app://local/desktop/selftest.pdf')).arrayBuffer();
         r.pdfPages = (await Media.pdfPages({ data: pdf })).length;
-      } catch (e) { r.pdfError = String((e && (e.stack || e.message)) || e); }
+      } catch (e) { r.pdfError = [e && e.name, e && e.message, e && e.details, navigator.userAgent].join(' | '); }
       await Output.open();
       await new Promise((res) => setTimeout(res, 1500));
       r.tvOpen = Output.isOpen();
