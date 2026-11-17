@@ -68,8 +68,9 @@
   async function loadPdfJs() {
     if (pdfjs) return pdfjs;
     try {
+      await import(new URL('vendor/pdfjs/polyfills.mjs', location.href).href);
       pdfjs = await import(new URL('vendor/pdfjs/pdf.min.mjs', location.href).href);
-      pdfjs.GlobalWorkerOptions.workerSrc = new URL('vendor/pdfjs/pdf.worker.min.mjs', location.href).href;
+      pdfjs.GlobalWorkerOptions.workerSrc = new URL('vendor/pdfjs/worker.mjs', location.href).href;
       return pdfjs;
     } catch (e) {
       throw new Error('PDFs can be turned into slides in the Mac app. (Chrome blocks it when the page is opened from a file.)');
