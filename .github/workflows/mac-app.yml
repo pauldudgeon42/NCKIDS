@@ -106,8 +106,11 @@ jobs:
         run: |
           APP="$(ls -d dist/mac-arm64/*.app)"
           rcodesign sign "$APP"
-          rcodesign verify "$APP/Contents/MacOS/NC Kids Presenter"
-          rcodesign print-signature-info "$APP/Contents/MacOS/NC Kids Presenter" | grep -iE "identifier|flags|adhoc" | head -5
+          # ("rcodesign verify" expects a paid certificate, so it can't check ad-hoc signatures.
+          #  Instead, make sure the program now carries a signature with a code hash.)
+          rcodesign print-signature-info "$APP/Contents/MacOS/NC Kids Presenter" > /tmp/sig.txt
+          grep -iE "identifier|cdhash|flags" /tmp/sig.txt | head -8
+          grep -qiE "cdhash|code_directory" /tmp/sig.txt
           file "$APP/Contents/MacOS/NC Kids Presenter"
       - name: Zip it, keeping the Mac file details
         run: |
