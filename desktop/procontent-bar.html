@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ProContent toolbar</title>
+<style>
+  :root { color-scheme: light dark; --bg: #F3F4F6; --line: #E5E7EB; --text: #111827; --muted: #6B7280; --btn: #FFFFFF; --accent: #0F766E; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1B1E23; --line: #2E333A; --text: #F3F4F6; --muted: #A3ABB6; --btn: #252930; --accent: #2DD4BF; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 48px; overflow: hidden; background: var(--bg); color: var(--text);
+    font: 13px -apple-system, BlinkMacSystemFont, "Avenir Next", sans-serif; user-select: none; -webkit-user-select: none; }
+  body { display: flex; align-items: center; gap: 6px; padding: 0 10px; border-bottom: 1px solid var(--line); }
+  button { height: 32px; min-width: 32px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--btn); color: var(--text);
+    font: inherit; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  button:disabled { opacity: .35; cursor: default; }
+  svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .host { color: var(--muted); margin-left: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+  .spacer { flex: 1; }
+  .note { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dl { font-weight: 700; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px; }
+  .spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: s .8s linear infinite; display: none; }
+  .loading .spin { display: block; }
+  @keyframes s { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <button id="back" title="Back (⌘[)" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+  <button id="forward" title="Forward (⌘])" aria-label="Forward"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+  <button id="reload" title="Reload (⌘R)" aria-label="Reload"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
+  <button id="home" title="ProContent home">Home</button>
+  <span class="spin"></span><span class="host" id="host"></span>
+  <span class="spacer"></span>
+  <span id="status" class="note">Download any motion background or pack, and it goes straight into Backgrounds.</span>
+  <button id="close" title="Close (⌘W)">Done</button>
+<script>
+  for (const id of ['back', 'forward', 'reload', 'home', 'close']) document.getElementById(id).onclick = () => NCBar.nav(id);
+  NCBar.onState((st) => {
+    document.getElementById('back').disabled = !st.canBack;
+    document.getElementById('forward').disabled = !st.canForward;
+    document.body.classList.toggle('loading', st.loading);
+    document.getElementById('host').textContent = st.host;
+    const s = document.getElementById('status');
+    if (st.downloads.length) {
+      const d = st.downloads[0];
+      s.className = 'dl';
+      s.textContent = (d.unpacking ? 'Unpacking ' : 'Downloading ') + d.name + (d.unpacking || d.pct === null ? '…' : ` ${d.pct}%`) + (st.downloads.length > 1 ? ` (+${st.downloads.length - 1} more)` : '');
+    } else {
+      s.className = 'note';
+      s.textContent = 'Download any motion background or pack, and it goes straight into Backgrounds.';
+    }
+  });
+</script>
+</body>
+</html>

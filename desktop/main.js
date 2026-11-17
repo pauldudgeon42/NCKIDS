@@ -8,6 +8,7 @@
  *   - talks to Planning Center from here, where the browser's CORS rule doesn't apply
  *   - keeps the Planning Center token encrypted with the Mac Keychain (safeStorage)
  *   - runs the phone remote's little web server on the classroom Wi-Fi (desktop/remote-server.js)
+ *   - shows the ProContent website in its own window and catches its downloads (desktop/procontent.js)
  *
  * Start it with `npm start`. `npm run smoke` runs the self-check used by GitHub Actions.
  */
@@ -18,6 +19,7 @@ const fsp = require('fs/promises');
 const { pathToFileURL } = require('url');
 const { Readable } = require('stream');
 const { createRemoteServer } = require('./remote-server');
+const { setupProContent } = require('./procontent');
 
 const APP_ROOT = path.join(__dirname, '..');
 const SMOKE = process.argv.includes('--smoke-test');
@@ -318,6 +320,25 @@ const remote = createRemoteServer({
 });
 app.on('before-quit', () => remote.stop());
 
+// ---------- ProContent ----------
+let procontent = null;
+let smokeServer = null; // the self-check's stand-in for the ProContent website
+
+// ---------- self-check for GitHub Actions ----------
+/** A tiny stand-in for the ProContent website: a page, a loop and a pack to download. */
+function startSmokeSite() {
+  const http = require('http');
+  const files = { '/loop.mp4': ['selftest-loop.mp4', 'video/mp4', 'Smoke Loop.mp4'], '/pack.zip': ['selftest-pack.zip', 'application/zip', 'Selftest Pack.zip'] };
+  smokeServer = http.createServer((req, res) => {
+    const f = files[req.url];
+    if (!f) { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end('<!doctype html><title>Stand-in ProContent</title><a href="/pack.zip">Pack</a>'); return; }
+    const buf = fs.readFileSync(path.join(__dirname, f[0]));
+    res.writeHead(200, { 'Content-Type': f[1], 'Content-Length': buf.length, 'Content-Disposition': `attachment; filename="${f[2]}"` });
+    res.end(buf);
+  }).listen(8799, '127.0.0.1');
+  return 'http://127.0.0.1:8799/';
+}
+
 // ---------- self-check for GitHub Actions ----------
 async function runSmokeTest(win) {
   const errors = [];
@@ -389,10 +410,25 @@ async function runSmokeTest(win) {
       results.remoteStatus = (await js(`NCApp._R.status.phones`)) === 1;
       await js(`NCDesktop.remote.stop()`);
     } catch (e) { results.remoteError = String((e && e.stack) || e); }
+    // ProContent: open the window, download a pack and a single loop, and check they land in Backgrounds.
+    try {
+      await js(`NCApp.openProContent()`);
+      const until = Date.now() + 8000;
+      while (!(procontent.site && procontent.site.webContents.getURL().startsWith('http://127.0.0.1:8799')) && Date.now() < until) await new Promise((r) => setTimeout(r, 200));
+      results.pcWindow = !!procontent.window;
+      const bgs = () => js(`Store.data.backgrounds.filter((b) => b.source === 'procontent').map((b) => b.title + ':' + b.type + ':' + !!b.thumb).sort().join(',')`);
+      procontent.site.webContents.downloadURL('http://127.0.0.1:8799/pack.zip');
+      for (let i = 0; i < 60 && !(await bgs()).includes('Selftest Still'); i++) await new Promise((r) => setTimeout(r, 250));
+      procontent.site.webContents.downloadURL('http://127.0.0.1:8799/loop.mp4');
+      for (let i = 0; i < 60 && !(await bgs()).includes('Smoke Loop'); i++) await new Promise((r) => setTimeout(r, 250));
+      results.pcBackgrounds = await bgs();
+      procontent.window.close();
+    } catch (e) { results.pcError = String((e && e.stack) || e); }
     const ok = results.desktop && results.libraryOpen && results.readBack === 'hello library' && results.served === 'hello library' &&
       results.rangeStatus === 206 && results.rangeText === 'library' && results.libraryJson && results.removed && results.secretRoundTrip &&
       results.tvOpen && results.setupHidden && results.pdfPages === 1 &&
       results.remotePage && results.remotePaired && results.remoteRefused && results.remoteCmd && results.remoteEvents && results.remoteStatus &&
+      results.pcWindow && results.pcBackgrounds === 'Selftest Loop:video:true,Selftest Still:image:true,Smoke Loop:video:true' &&
       errors.length === 0;
     clearTimeout(timer);
     done(ok ? 0 : 1);
@@ -412,6 +448,13 @@ app.whenReady().then(() => {
   grantPermissions();
   watchDisplays();
   const win = createMainWindow();
+  procontent = setupProContent({
+    getMainWindow: () => mainWindow,
+    hasLibrary: () => !!libraryPath,
+    allowFile: (f) => pickedFiles.add(f),
+    show: !SMOKE || process.env.NC_SMOKE_SHOW === '1',
+    home: SMOKE ? startSmokeSite() : undefined,
+  });
   if (SMOKE) runSmokeTest(win);
   app.on('activate', () => { if (!mainWindow) createMainWindow(); });
 });

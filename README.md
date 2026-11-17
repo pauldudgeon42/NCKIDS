@@ -46,6 +46,8 @@ Everything happens in **Build** mode.
 
 **Motion backgrounds:** Backgrounds tab → **Import backgrounds…** (or drag files from Finder). Click **Make default** on the one you use most.
 
+**Backgrounds from ProContent:** Backgrounds tab → **ProContent** opens the ProContent website in its own window. Sign in with the church's ProContent account (it remembers you). Download any loop or pack, and it goes straight into Backgrounds, tagged "ProContent". Packs are unpacked for you. If a 4K loop plays choppily, download the HD version. ProContent backgrounds may only be used while the church's membership is active, so if it ends, search Backgrounds for "ProContent" to find them.
+
 **Songs:** Songs tab → **New song**, then paste the lyrics into the **Lyrics** view with a label line before each part:
 
 ```
