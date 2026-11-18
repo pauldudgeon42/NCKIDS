@@ -67,7 +67,7 @@
           '(If the internet is fine, Planning Center may not allow this page to connect directly. See README → Planning Center.)', 'network');
       }
       if (res.status === 401) throw new PcoError('Planning Center didn’t accept the access token. Check the Application ID and Secret in Settings.', 'auth');
-      if (res.status === 403) throw new PcoError('That Planning Center login doesn’t have permission to view Services songs.', 'auth');
+      if (res.status === 403) throw new PcoError('The NCKids Classroom login doesn’t have permission to see this in Planning Center (403).', 'auth');
       if (res.status === 429) {
         const wait = Number(res.headers.get('Retry-After') || 5);
         await new Promise((r) => setTimeout(r, wait * 1000));
@@ -143,7 +143,7 @@
 
     /** The order of service, with songs and arrangements filled in. */
     async planItems(serviceTypeId, planId) {
-      const path = `/service_types/${encodeURIComponent(serviceTypeId)}/plans/${encodeURIComponent(planId)}/items?per_page=100&include=song,arrangement`;
+      const path = `/service_types/${encodeURIComponent(serviceTypeId)}/plans/${encodeURIComponent(planId)}/items?per_page=100&include=song,arrangement,media`;
       const out = [];
       const included = {};
       let next = path;
@@ -162,36 +162,62 @@
           id: r.id, kind: a.item_type || 'item', title: (a.title || '').trim() || 'Untitled', self: r.links && r.links.self,
           songId: songRef && songRef.id, arrangementId: arrRef && arrRef.id,
           customSequence: Array.isArray(seq) && seq.length ? seq : null,
+          mediaIds: ((rel.media && rel.media.data) || []).map((m) => String(m.id)),
           song: song && { id: song.id, title: song.attributes.title || a.title, author: song.attributes.author || '',
             copyright: song.attributes.copyright || '', ccli: song.attributes.ccli_number ? String(song.attributes.ccli_number) : '' },
         };
       });
     },
 
-    /** Files attached to a plan item (and to its Planning Center Media, for media items). */
+    /**
+     * Every file attached anywhere in a plan (its items, their media, songs…), in one call.
+     * Each comes back tagged with what it's attached to (attachableType / attachableId).
+     */
+    async planAttachments(serviceTypeId, planId) {
+      const rows = await this.getAll(`/service_types/${encodeURIComponent(serviceTypeId)}/plans/${encodeURIComponent(planId)}/all_attachments?per_page=100`);
+      return rows.map((r) => {
+        const at = (r.relationships && r.relationships.attachable && r.relationships.attachable.data) || {};
+        const att = Object.assign(mapAttachment(r), { attachableType: at.type || '', attachableId: at.id ? String(at.id) : '' });
+        // Other addresses for the same file, in case "open" isn't accepted at the first one.
+        if (att.attachableType === 'Item') att.alt = [`${API}/service_types/${encodeURIComponent(serviceTypeId)}/plans/${encodeURIComponent(planId)}/items/${att.attachableId}/attachments/${att.id}`];
+        else if (att.attachableType === 'Media') att.alt = [`${API}/media/${att.attachableId}/attachments/${att.id}`];
+        return att;
+      });
+    },
+
+    /** Files attached to one plan item (and to its Planning Center Media). Used if planAttachments finds none. */
     async itemAttachments(serviceTypeId, planId, item) {
       const base = item.self || `${API}/service_types/${encodeURIComponent(serviceTypeId)}/plans/${encodeURIComponent(planId)}/items/${encodeURIComponent(item.id)}`;
-      const map = (r) => ({ id: r.id, filename: r.attributes.filename || r.attributes.display_name || 'file', contentType: r.attributes.content_type || '',
-        size: r.attributes.file_size || 0, linked: !!r.attributes.linked_url, self: r.links && r.links.self, updated: r.attributes.updated_at || '' });
-      let atts = (await this.getAll(base + '/attachments?per_page=100')).map(map);
-      if (!atts.length && item.kind === 'media') {
-        for (const m of await this.getAll(base + '/media?per_page=25')) {
-          const mself = (m.links && m.links.self) || `${API}/media/${m.id}`;
-          atts.push(...(await this.getAll(mself + '/attachments?per_page=100')).map(map));
-        }
+      const atts = (await this.getAll(base + '/attachments?per_page=100')).map(mapAttachment);
+      if (!atts.length && (item.mediaIds || []).length) {
+        for (const mid of item.mediaIds) atts.push(...(await this.getAll(`/media/${encodeURIComponent(mid)}/attachments?per_page=100`)).map(mapAttachment));
       }
-      return atts.filter((x) => !x.linked);
+      return atts;
+    },
+
+    /** Ask Planning Center for a short-lived download link for an attachment. */
+    async openUrl(att) {
+      const c = loadCreds();
+      const headers = { Authorization: 'Basic ' + btoa(c.appId + ':' + c.secret), Accept: 'application/json', 'Content-Type': 'application/json' };
+      const tries = [...(att.alt || []), att.self, `${API}/attachments/${att.id}`].filter((v, i, arr) => v && arr.indexOf(v) === i);
+      let last = 0;
+      for (const base of tries) {
+        const res = await pcoFetch(base + '/open', headers, { method: 'POST', body: JSON.stringify({ data: {} }) });
+        if (res.ok) {
+          const body = await res.json();
+          const url = body && body.data && body.data.attributes && (body.data.attributes.attachment_url || body.data.attributes.url);
+          if (url) return url;
+          throw new PcoError(`Planning Center didn't give a download link for “${att.filename}”.`, 'http');
+        }
+        last = res.status;
+        if (res.status === 401 || res.status === 403) break; // a permission problem won't change at another address
+      }
+      throw new PcoError(last === 403 ? `The NCKids Classroom login isn’t allowed to download “${att.filename}” (403).` : `Planning Center wouldn't open “${att.filename}” (${last}).`, 'http');
     },
 
     /** Download one attachment into the library (Mac app only). Returns the saved library path. */
     async downloadAttachment(att, saveTo) {
-      const c = loadCreds();
-      const headers = { Authorization: 'Basic ' + btoa(c.appId + ':' + c.secret), Accept: 'application/json', 'Content-Type': 'application/json' };
-      const res = await pcoFetch(att.self + '/open', headers, { method: 'POST', body: JSON.stringify({ data: {} }) });
-      if (!res.ok) throw new PcoError(`Planning Center wouldn't open “${att.filename}” (${res.status}).`, 'http');
-      const body = await res.json();
-      const url = body && body.data && body.data.attributes && (body.data.attributes.attachment_url || body.data.attributes.url);
-      if (!url) throw new PcoError(`Planning Center didn't give a download link for “${att.filename}”.`, 'http');
+      const url = await this.openUrl(att);
       const r = await window.NCDesktop.http.request(url, { download: true, saveTo });
       if (!r.ok) throw new PcoError(`Downloading “${att.filename}” failed (${r.status}).`, 'http');
       return saveTo;
@@ -210,6 +236,31 @@
       };
     },
   };
+
+  // File types by content type, for attachments whose name has no extension.
+  const TYPE_EXT = {
+    'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/x-m4v': 'm4v', 'video/webm': 'webm',
+    'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'application/pdf': 'pdf',
+  };
+  /**
+   * One attachment, as the app needs it. "linked" is a web link (YouTube, Vimeo, a URL),
+   * which can't be downloaded. Uploaded files are AttachmentS3 (sometimes with a
+   * linked_url too, which must not make them count as links).
+   */
+  function mapAttachment(r) {
+    const a = r.attributes || {};
+    const type = String(a.pco_type || '');
+    const contentType = String(a.content_type || '').toLowerCase().split(';')[0].trim();
+    let filename = String(a.filename || a.display_name || 'file').trim();
+    const ext = (filename.match(/\.([a-z0-9]+)$/i) || [])[1];
+    if ((!ext || !Object.values(TYPE_EXT).includes(ext.toLowerCase())) && TYPE_EXT[contentType]) filename += '.' + TYPE_EXT[contentType];
+    const linked = /Link|Youtube|Vimeo|Spotify|Soundcloud/i.test(type) || (!type && !!a.linked_url && !a.file_size);
+    return {
+      id: r.id, filename, contentType, size: a.file_size || 0, linked, linkUrl: a.linked_url || '',
+      downloadable: a.downloadable !== false, pcoType: type,
+      self: (r.links && r.links.self) || `${API}/attachments/${r.id}`, updated: a.updated_at || '',
+    };
+  }
 
   /** Tidy SongSelect lyrics: drop chord-chart markup and CCLI footer lines if present. */
   function cleanLyrics(text) {

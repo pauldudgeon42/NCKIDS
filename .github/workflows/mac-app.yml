@@ -11,6 +11,16 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      mac_runner:
+        description: 'Which GitHub Mac machine builds the app (the app works on every Mac either way)'
+        type: choice
+        options: [macos-15-intel, macos-latest]
+        default: macos-15-intel
+      backup_build:
+        description: 'Also build on Linux (backup for when no Mac machine is free; makes a .zip for Apple Silicon Macs)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -30,8 +40,12 @@ jobs:
 
   build-mac:
     needs: self-check
-    runs-on: macos-latest
-    timeout-minutes: 30
+    # An Intel Mac machine builds the same universal app (Apple Silicon + Intel) as an Apple
+    # Silicon one, and GitHub usually has more of them free. To switch, set the repository
+    # variable MAC_RUNNER (Settings → Secrets and variables → Actions → Variables) to macos-latest,
+    # or pick it when running the workflow by hand.
+    runs-on: ${{ inputs.mac_runner || vars.MAC_RUNNER || 'macos-15-intel' }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,3 +75,51 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ github.event.release.tag_name }}" dist/*.dmg dist/*.zip --clobber
+
+  # Backup: build the Mac app on Linux when GitHub has no Mac machines free.
+  # Makes NC-Kids-Presenter-mac-arm64.zip (Apple Silicon Macs). There's no .dmg (that needs a Mac),
+  # so unzip it and drag "NC Kids Presenter" into Applications. It gets the same free ad-hoc
+  # signature as the normal build, using rcodesign (an open-source signing tool that runs on Linux).
+  build-mac-on-linux:
+    needs: self-check
+    if: github.event_name == 'workflow_dispatch' && inputs.backup_build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Build the app (Apple Silicon)
+        run: npx electron-builder --mac dir --arm64 --publish never -c.mac.identity=null
+      - name: Get rcodesign
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=$(gh release list -R indygreg/apple-platform-rs --limit 40 --json tagName --jq '[.[] | select(.tagName | startswith("apple-codesign/"))][0].tagName')
+          echo "rcodesign $TAG"
+          gh release download "$TAG" -R indygreg/apple-platform-rs --pattern '*x86_64-unknown-linux-musl.tar.gz' -D /tmp/rc
+          tar -xzf /tmp/rc/*.tar.gz -C /tmp/rc
+          install "$(find /tmp/rc -name rcodesign -type f | head -1)" /usr/local/bin/rcodesign
+      - name: Sign (ad-hoc) and check
+        run: |
+          APP="$(ls -d dist/mac-arm64/*.app)"
+          rcodesign sign "$APP"
+          # ("rcodesign verify" expects a paid certificate, so it can't check ad-hoc signatures.
+          #  Instead, make sure the program now carries a signature with a code hash.)
+          rcodesign print-signature-info "$APP/Contents/MacOS/NC Kids Presenter" > /tmp/sig.txt
+          grep -iE "identifier|cdhash|flags" /tmp/sig.txt | head -8
+          grep -qiE "cdhash|code_directory" /tmp/sig.txt
+          file "$APP/Contents/MacOS/NC Kids Presenter"
+      - name: Zip it, keeping the Mac file details
+        run: |
+          cd dist/mac-arm64
+          VER=$(node -p "require('../../package.json').version")
+          zip -qry --symlinks "../NC-Kids-Presenter-$VER-mac-arm64.zip" "NC Kids Presenter.app"
+          ls -la ../*.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NC-Kids-Presenter-mac-arm64-backup
+          path: dist/*.zip
+          retention-days: 30

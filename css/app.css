@@ -519,3 +519,11 @@ html.desktop .desktop-only { display: inline-flex !important; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
 .row-gap { display: flex; gap: 10px; margin: 16px 0 8px; }
 @media (max-width: 640px) { .phone-on { grid-template-columns: 1fr; } }
+
+/* the app's own "type a name" pop-up (askText) */
+.ask-modal { z-index: 40; }
+.ask-card { width: min(460px, 92vw); display: flex; flex-direction: column; gap: 16px; }
+.ask-label { display: flex; flex-direction: column; gap: 10px; font-weight: 700; }
+.ask-input { font: inherit; font-weight: 500; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--sunken, var(--panel)); color: var(--text); }
+.ask-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ask-btns { justify-content: flex-end; }
