@@ -47,17 +47,32 @@
   }
 
   /** Largest font size (≤ max) at which `el`'s text fits inside its box. */
+  /**
+   * Make the words as big as they can be while fitting the screen.
+   * First try to keep every line on one line (shrinking down to 60% of the biggest size),
+   * so a slightly long line doesn't leave one word on its own ("…let it / shine").
+   * Only if a line is still too long, let lines wrap, with balanced line lengths.
+   */
   function fitText(el, max) {
-    let lo = 24, hi = max, best = lo;
-    el.style.fontSize = hi + 'px';
-    if (el.scrollHeight <= el.clientHeight && el.scrollWidth <= el.clientWidth) return hi;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      el.style.fontSize = mid + 'px';
-      if (el.scrollHeight <= el.clientHeight && el.scrollWidth <= el.clientWidth) { best = mid; lo = mid + 1; } else hi = mid - 1;
+    const fits = () => el.scrollHeight <= el.clientHeight && el.scrollWidth <= el.clientWidth;
+    const search = (lo, hi) => {
+      let best = 0;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        el.style.fontSize = mid + 'px';
+        if (fits()) { best = mid; lo = mid + 1; } else hi = mid - 1;
+      }
+      return best;
+    };
+    el.style.whiteSpace = 'pre';
+    let size = search(Math.max(40, Math.round(max * 0.6)), max);
+    if (!size) {
+      el.style.whiteSpace = 'pre-line';
+      el.style.textWrap = 'balance';
+      size = search(24, max) || 24;
     }
-    el.style.fontSize = best + 'px';
-    return best;
+    el.style.fontSize = size + 'px';
+    return size;
   }
 
   class Renderer {

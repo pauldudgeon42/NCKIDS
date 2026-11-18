@@ -7,7 +7,7 @@
  * Data lives in Store.data (see store.js). Call Store.save() after changing it.
  */
 (function () {
-  const APP_VERSION = '1.3.1';
+  const APP_VERSION = '1.4.0';
 
   // ---------- small helpers ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -519,6 +519,8 @@
 
   function markLive() {
     remoteSoon();
+    const empty = $('#live-empty');
+    if (empty) empty.classList.toggle('hidden', !!P.live || !!Output.timer || !!P.last);
     $$('#present-slides .slide-card').forEach((c) => c.classList.toggle('live',
       !!P.live && Number(c.dataset.item) === P.live.item && Number(c.dataset.slide) === P.live.slide));
     renderPresentItems();
@@ -947,8 +949,8 @@
             <span class="icon t-${it.type}">${icon(it.type)}</span>
             ${it.type === 'label'
               ? `<span class="name"><input class="label-input" data-label="${i}" value="${esc(it.title || '')}" aria-label="Section label"><small>Section label</small></span>`
-              : `<span class="name">${esc(itemTitle(it))}<small>${TYPE_NAME[it.type]}${it.arrangement ? ' · order from the plan' : ''}</small></span>`}
-            ${it.type === 'song' ? `<label class="bg-pick">Background <select data-bg="${i}">${bgOptions(it.background || '', { defaultLabel: 'Song’s own' })}</select></label>` : ''}
+              : `<span class="name" title="${esc(itemTitle(it))}"><span class="nm">${esc(itemTitle(it))}</span><small>${TYPE_NAME[it.type]}${it.arrangement ? ' · order from the plan' : ''}</small></span>`}
+            ${it.type === 'song' ? `<label class="bg-pick" title="Background for this song in this playlist"><span class="lbl">Background</span> <select data-bg="${i}">${bgOptions(it.background || '', { defaultLabel: 'Song’s own' })}</select></label>` : ''}
             <button class="icon-btn" data-up="${i}" title="Move up" aria-label="Move up">${icon('up')}</button>
             <button class="icon-btn" data-down="${i}" title="Move down" aria-label="Move down">${icon('down')}</button>
             <button class="icon-btn danger" data-remove="${i}" title="Remove from playlist" aria-label="Remove from playlist">${icon('x')}</button>
@@ -1273,7 +1275,7 @@
       const setOrder = (list) => { song.arrangement = list.join(', '); changed(); renderOrder(); };
       const el = $('#song-order');
       el.innerHTML = labels.map((l, i) => `<span class="o-chip k-${Songs.sectionKind(keys[i])}" draggable="true" data-index="${i}">
-          <span class="grip">${icon('grip', 12)}</span>${esc(l)}<button class="o-x" data-remove="${i}" aria-label="Remove ${esc(l)}">${icon('x', 12)}</button></span>`).join('')
+          <span class="grip">${icon('grip', 12)}</span>${esc(l)}<button class="o-x" data-remove="${i}" aria-label="Remove ${esc(l)}" title="Remove from the order">${icon('x', 12)}</button></span>`).join('')
         || '<span class="muted small">Add lyrics to build the order.</span>';
       const seen = new Set();
       $('#song-order-add').innerHTML = sections.length ? '<span class="muted small">Add:</span>' + sections.filter((s) => !seen.has(s.label) && seen.add(s.label))
@@ -1845,7 +1847,7 @@
     body.innerHTML = `
       <section class="col card col-full" id="media-main">
         <div class="col-head"><h2>${title}</h2>
-          <div class="row gap"><input type="search" id="media-search" placeholder="Search…"><button class="btn primary" id="media-import">${importLabel}</button><button class="btn" id="media-import-folder">+ From a folder…</button>${headerButtons}</div>
+          <div class="row gap media-head"><input type="search" id="media-search" placeholder="Search…"><button class="btn primary" id="media-import">${importLabel}</button><button class="btn" id="media-import-folder">+ From a folder…</button>${headerButtons}</div>
         </div>
         <p class="hint">${hint}</p>
         <div class="media-grid" id="media-grid"></div>
@@ -1858,8 +1860,8 @@
           <div class="media-thumb"><img data-path="${esc(x.thumb || '')}" alt=""><span class="badge">${x.type === 'image' ? 'Still' : (x.duration ? fmtTime(x.duration) : 'Motion')}</span>
             ${type === 'background' && S().defaultBackground === x.id ? '<span class="badge default">Default</span>' : ''}
             ${x.source === 'procontent' ? '<span class="badge source">ProContent</span>' : ''}</div>
-          <input class="media-title" value="${esc(x.title)}" data-title="${x.id}">
-          <div class="row gap">${extraButtons ? extraButtons(x) : ''}<button class="icon-btn danger" data-del="${x.id}" title="Delete" aria-label="Delete">${icon('x')}</button></div>
+          <input class="media-title" value="${esc(x.title)}" data-title="${x.id}" title="${esc(x.title)} (click to rename)">
+          <div class="row gap">${extraButtons ? extraButtons(x) : ''}<button class="icon-btn danger media-del" data-del="${x.id}" title="Delete" aria-label="Delete">${icon('x')}</button></div>
         </div>`).join('') || '<p class="muted pad">Nothing here yet. Use the import button, or drag files from Finder onto this page.</p>';
       $$('img[data-path]', grid).forEach(async (img) => { if (img.dataset.path) img.src = await Store.url(img.dataset.path); });
     };
@@ -2106,22 +2108,59 @@
     $('#set-ccli-show').onchange = (e) => { s.showCcliFooter = e.target.checked; Store.save(); invalidateSlides(); };
   }
 
+  function pcSecrets() { return (window.NCDesktop && window.NCDesktop.secrets) || (window.NCProContentBridge && window.NCProContentBridge.secrets) || null; }
   function setProContent(el) {
     const n = D().backgrounds.filter((b) => b.source === 'procontent').length;
+    const sec = pcSecrets();
+    const savedEmail = sec ? sec.get('procontent.email') : null;
+    const savedOk = !!(savedEmail && sec.get('procontent.password'));
     el.innerHTML = `
       <h1>ProContent</h1>
-      <p class="lead">Browse and download Renewed Vision’s ProContent motion backgrounds without leaving the app. Open it from <b>Build → Backgrounds → ProContent</b>.</p>
+      <p class="lead">Browse and download Renewed Vision’s ProContent motion backgrounds without leaving the app. Open it from <b>Build → Backgrounds → ProContent</b>. It opens on <b>Browse Media</b>.</p>
+
+      <h3 class="set-sub">Saved sign-in</h3>
+      ${savedOk ? `
+        <p class="pc-saved">${icon('check', 16)} Signs in automatically as <b>${esc(savedEmail)}</b></p>
+        <div class="row gap"><button class="btn" id="pc-change">Change</button><button class="btn danger" id="pc-forget">Forget saved sign-in</button></div>` : `
+        <p class="hint">Save the church’s ProContent email and password, and the app signs in for you whenever ProContent asks.</p>
+        <form id="pc-login" class="form-grid two pc-login" autocomplete="off">
+          <label>Email<input type="email" id="pc-email" value="${esc(savedEmail || '')}" autocomplete="off" spellcheck="false"></label>
+          <label>Password<input type="password" id="pc-pass" autocomplete="new-password"></label>
+          <div class="row gap"><button class="btn primary" id="pc-save">Save sign-in</button></div>
+        </form>`}
+      <p class="small muted">It’s stored encrypted in this Mac’s Keychain, only ever filled in on ProContent’s own website (renewedvision.com), and never saved in the library folder. The app also keeps ProContent’s sign-in when it quits, so most days you won’t see the sign-in page at all.</p>
+
+      <h3 class="set-sub">Downloads</h3>
       <ul class="steps">
-        <li>Sign in with the church’s ProContent account, the same as on the ProContent website. The sign-in is remembered on this Mac.</li>
         <li>Download a single loop or a whole pack, and it goes straight into Backgrounds, marked “ProContent”. Packs are unpacked for you.</li>
         <li>4K loops are big. If one plays choppily, download the HD (1080p) version instead.</li>
-        <li><b>Licensing:</b> ProContent backgrounds can only be used while the church’s membership is active (items bought one at a time keep their license). If the membership ends, search Backgrounds for “ProContent” to find the ones to remove.</li>
+        <li><b>Licensing:</b> ProContent backgrounds are licensed while the church’s membership is active. Search Backgrounds for “ProContent” to see them all.</li>
       </ul>
       <p class="small muted">${n} background${n === 1 ? '' : 's'} came from ProContent.</p>
       <div class="row gap"><button class="btn primary" id="pc-open-2">Open ProContent</button><button class="btn danger" id="pc-signout">Sign out of ProContent</button></div>`;
     $('#pc-open-2').onclick = openProContent;
+    if ($('#pc-login')) {
+      $('#pc-login').onsubmit = (e) => {
+        e.preventDefault();
+        const email = $('#pc-email').value.trim(), pass = $('#pc-pass').value;
+        if (!/^\S+@\S+\.\S+$/.test(email)) { toast('Enter the ProContent email address.', 'error'); $('#pc-email').focus(); return; }
+        if (!pass) { toast('Enter the ProContent password.', 'error'); $('#pc-pass').focus(); return; }
+        sec.set('procontent.email', email);
+        sec.set('procontent.password', pass);
+        toast('Saved. ProContent will sign in by itself.');
+        setProContent(el);
+      };
+      if (!sec) { $('#pc-login').innerHTML = '<p class="muted">Saving a sign-in works in the Mac app.</p>'; }
+    }
+    if ($('#pc-change')) $('#pc-change').onclick = () => { sec.remove('procontent.password'); setProContent(el); setTimeout(() => $('#pc-pass') && $('#pc-pass').focus(), 0); };
+    if ($('#pc-forget')) $('#pc-forget').onclick = () => {
+      if (!confirm('Forget the saved ProContent sign-in on this Mac?')) return;
+      sec.remove('procontent.email'); sec.remove('procontent.password');
+      toast('Forgot the saved sign-in.');
+      setProContent(el);
+    };
     $('#pc-signout').onclick = async () => {
-      if (!confirm('Sign out of ProContent on this Mac? Backgrounds you already downloaded stay.')) return;
+      if (!confirm('Sign out of ProContent on this Mac? Backgrounds you already downloaded stay, and the saved sign-in (if any) is kept.')) return;
       await pcBridge().signOut();
       toast('Signed out of ProContent.');
     };

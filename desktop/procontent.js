@@ -19,12 +19,65 @@ const crypto = require('crypto');
 const { extractMedia } = require('./unzip');
 
 const PARTITION = 'persist:procontent';
-const HOME = 'https://procontent.renewedvision.com/';
+// "Browse Media" on the ProContent website
+const HOME = 'https://procontent.renewedvision.com/search';
+const KEEP_DAYS = 180;
+const isLoginPage = (url) => { try { return /^\/(login|sign-?in|signin|auth)/i.test(new URL(url).pathname); } catch (e) { return false; } };
+
+/*
+ * Fills in the saved email and password on a ProContent sign-in page and presses
+ * Sign In. Runs in an isolated world: the page's own scripts can't see these values,
+ * only the form fields they end up in (the same as typing them).
+ */
+const FILL_SCRIPT = (email, password) => `(async (email, password) => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const visible = (el) => el && el.offsetParent !== null && !el.disabled && !el.readOnly;
+  const setVal = (el, v) => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  for (let t = 0; t < 40; t++) {
+    const pw = [...document.querySelectorAll('input[type=password]')].find(visible);
+    const em = [...document.querySelectorAll('input[type=email], input[autocomplete=username], input[autocomplete=email], input[name*=email i], input[id*=email i], input[name*=user i]')].find(visible);
+    if (pw || em) {
+      if (em && em.value !== email) setVal(em, email);
+      if (pw) setVal(pw, password);
+      const remember = [...document.querySelectorAll('input[type=checkbox]')].find((c) => visible(c) && /remember|keep me|stay signed/i.test(((c.closest('label') || c.parentElement || {}).textContent) || ''));
+      if (remember && !remember.checked) remember.click();
+      await sleep(200);
+      const form = (pw || em).form;
+      const btn = (form && form.querySelector('button[type=submit], input[type=submit]')) ||
+        [...document.querySelectorAll('button, input[type=submit]')].find((b) => visible(b) && /^(sign in|log in|login|continue|next|submit)$/i.test((b.textContent || b.value || '').trim()));
+      if (btn) btn.click(); else if (form) form.requestSubmit();
+      return pw ? 'submitted' : 'email';
+    }
+    await sleep(300);
+  }
+  return 'none';
+})(${JSON.stringify(email)}, ${JSON.stringify(password)})`;
+
+/* Is the page showing a "Sign In" link (so nobody is signed in)? */
+const SIGNED_OUT_SCRIPT = `(async () => {
+  for (let t = 0; t < 8; t++) {
+    const link = [...document.querySelectorAll('a[href*="/login"], a[href*="sign-in"], button')].find((a) => a.offsetParent !== null && /^(sign in|log in)$/i.test(a.textContent.trim()));
+    if (link) return true;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return false;
+})()`;
 const MEDIA_EXT = ['.mp4', '.m4v', '.mov', '.webm', '.jpg', '.jpeg', '.png'];
 const BAR = 48;
 
-function setupProContent({ getMainWindow, hasLibrary, allowFile, show = true, home = HOME }) {
+function setupProContent({ getMainWindow, hasLibrary, allowFile, getSecret, show = true, home = HOME, siteDomain = 'renewedvision.com' }) {
+  // Only ProContent's own pages get the saved sign-in (the self-check uses a stand-in site).
+  const onSite = (url) => { try { const h = new URL(url).hostname; return h === siteDomain || h.endsWith('.' + siteDomain); } catch (e) { return false; } };
   let win = null, bar = null, site = null;
+  let signIn = { tries: 0, submitted: false, note: '' };
+  const savedLogin = () => {
+    const email = getSecret && getSecret('procontent.email'), password = getSecret && getSecret('procontent.password');
+    return email && password ? { email, password } : null;
+  };
   const holding = () => path.join(app.getPath('userData'), 'ProContent downloads');
   const active = new Map(); // id -> { name, received, total }
 
@@ -36,7 +89,7 @@ function setupProContent({ getMainWindow, hasLibrary, allowFile, show = true, ho
     try { host = new URL(site.webContents.getURL()).host; } catch (e) { /* blank */ }
     const dl = [...active.values()];
     bar.webContents.send('pc:bar', {
-      canBack: h.canGoBack(), canForward: h.canGoForward(), loading: site.webContents.isLoading(), host,
+      canBack: h.canGoBack(), canForward: h.canGoForward(), loading: site.webContents.isLoading(), host, note: signIn.note,
       downloads: dl.map((d) => ({ name: d.name, pct: d.total ? Math.round((100 * d.received) / d.total) : null, unpacking: !!d.unpacking })),
     });
     const total = dl.reduce((a, d) => a + (d.total || 0), 0), got = dl.reduce((a, d) => a + d.received, 0);
@@ -66,6 +119,10 @@ function setupProContent({ getMainWindow, hasLibrary, allowFile, show = true, ho
       return { action: 'allow', overrideBrowserWindowOptions: { width: 560, height: 760, title: 'ProContent', webPreferences: { partition: PARTITION, contextIsolation: true, sandbox: true } } };
     });
     for (const ev of ['did-navigate', 'did-navigate-in-page', 'did-start-loading', 'did-stop-loading']) wc.on(ev, barState);
+    signIn = { tries: 0, submitted: false, note: '' };
+    wc.on('did-finish-load', () => afterLoad(wc));
+    wc.on('did-navigate-in-page', () => afterLoad(wc));
+    wc.on('did-navigate', () => keepSignedInSoon());
     wc.on('page-title-updated', (e, title) => win && win.setTitle(`${title} — ProContent`));
     // Keyboard shortcuts like a browser.
     wc.on('before-input-event', (e, input) => {
@@ -78,10 +135,69 @@ function setupProContent({ getMainWindow, hasLibrary, allowFile, show = true, ho
     bar.webContents.loadURL('app://local/desktop/procontent-bar.html');
     bar.webContents.on('did-finish-load', barState);
     wc.loadURL(home);
+    win.on('close', () => keepSignedIn());
     win.on('closed', () => {
       try { bar.webContents.close(); site.webContents.close(); } catch (e) { /* already gone */ }
       win = bar = site = null;
     });
+  }
+
+  // ----- staying signed in -----
+  // Websites often keep a sign-in in "session" cookies, which a browser forgets when it quits.
+  // Make ProContent's cookies last KEEP_DAYS so the sign-in survives quitting the app.
+  async function keepSignedIn() {
+    try {
+      const until = Date.now() / 1000 + KEEP_DAYS * 86400;
+      for (const c of await ses.cookies.get({})) {
+        const domain = String(c.domain || '').replace(/^\./, '');
+        if (!(domain === siteDomain || domain.endsWith('.' + siteDomain))) continue;
+        if (!c.session && c.expirationDate && c.expirationDate > until - 86400) continue;
+        await ses.cookies.set({
+          url: `${c.secure ? 'https' : 'http'}://${domain}${c.path || '/'}`, name: c.name, value: c.value,
+          domain: c.hostOnly ? undefined : c.domain, path: c.path, secure: c.secure, httpOnly: c.httpOnly,
+          sameSite: c.sameSite, expirationDate: Math.max(until, c.expirationDate || 0),
+        }).catch(() => {});
+      }
+      await ses.cookies.flushStore();
+    } catch (e) { /* not important enough to bother anyone */ }
+  }
+  let keepTimer = null;
+  const keepSignedInSoon = () => { clearTimeout(keepTimer); keepTimer = setTimeout(keepSignedIn, 2500); };
+
+  // ----- saved sign-in -----
+  async function afterLoad(wc) {
+    const url = wc.getURL();
+    if (!onSite(url)) return;
+    const login = savedLogin();
+    if (isLoginPage(url)) {
+      if (!login) return;
+      if (signIn.submitted && signIn.tries >= 2) {
+        signIn.note = 'The saved sign-in didn’t work. Check it in Settings → ProContent.';
+        barState();
+        return;
+      }
+      signIn.tries++;
+      try {
+        const r = await wc.executeJavaScriptInIsolatedWorld(1999, [{ code: FILL_SCRIPT(login.email, login.password) }]);
+        if (r === 'submitted') { signIn.submitted = true; signIn.note = 'Signing in with the saved sign-in…'; barState(); }
+      } catch (e) { /* page went away */ }
+      return;
+    }
+    if (signIn.submitted) {
+      // Signed in: back to Browse Media, and keep the sign-in.
+      signIn = { tries: 0, submitted: false, note: '' };
+      barState();
+      keepSignedInSoon();
+      if (url.replace(/[?#].*$/, '').replace(/\/$/, '') !== home.replace(/\/$/, '')) wc.loadURL(home);
+      return;
+    }
+    // Not signed in but a sign-in is saved: go and sign in (once per window).
+    if (login && signIn.tries === 0) {
+      try {
+        const out = await wc.executeJavaScriptInIsolatedWorld(1999, [{ code: SIGNED_OUT_SCRIPT }]);
+        if (out && !wc.isDestroyed() && signIn.tries === 0) wc.loadURL(new URL('/login', url).href);
+      } catch (e) { /* page went away */ }
+    }
   }
 
   ipcMain.on('pc:nav', (e, what) => {
@@ -157,6 +273,7 @@ function setupProContent({ getMainWindow, hasLibrary, allowFile, show = true, ho
   });
   ipcMain.handle('pc:open', () => { open(); return true; });
   ipcMain.handle('pc:signOut', async () => {
+    signIn = { tries: 99, submitted: false, note: '' }; // don't sign straight back in
     await ses.clearStorageData();
     if (site) site.webContents.loadURL(home);
     return true;
@@ -166,7 +283,9 @@ function setupProContent({ getMainWindow, hasLibrary, allowFile, show = true, ho
   // Leftovers from last time (e.g. the app quit mid-import).
   fs.rm(holding(), { recursive: true, force: true }, () => {});
 
-  return { open, get site() { return site; }, get window() { return win; } };
+  app.on('before-quit', () => { keepSignedIn(); });
+
+  return { open, keepSignedIn, get site() { return site; }, get window() { return win; } };
 }
 
 function uniquePath(dir, name) {
